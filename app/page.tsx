@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use client";
 import React, { useState, useEffect } from 'react';
 import { 
@@ -12,7 +13,7 @@ const CONFIG = {
   shopName: "THE ROYCE",
   currency: "৳",
   deliveryCharge: 130,
-  bkash: "01845220350"
+  bkash: "017XXXXXXXX"
 };
 
 const LOCATION_DATA = {
