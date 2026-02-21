@@ -64,10 +64,15 @@ export default function Website() {
   });
   const [loadingProducts, setLoadingProducts] = useState(true);
 
-  // --- Anti-Crash & ID Generation ---
+  // --- Anti-Crash & Cloud ID Generation ---
   useEffect(() => {
     setMounted(true); 
     if(typeof window !== 'undefined'){
+       // Force clear old corrupted local storage
+       localStorage.removeItem('royce_cart');
+       localStorage.removeItem('royce_wishlist');
+       localStorage.removeItem('royce_user');
+
        let deviceId = localStorage.getItem('royce_device_uid');
        if(!deviceId) {
          deviceId = 'UID_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -77,7 +82,7 @@ export default function Website() {
     }
   }, []);
 
-  // --- Data Sync ---
+  // --- Cloud Data Sync ---
   useEffect(() => {
     if(!mounted) return;
     const unsubProducts = onSnapshot(collection(db, "products"), (snapshot) => {
@@ -85,7 +90,7 @@ export default function Website() {
       setLoadingProducts(false);
     });
     const unsubConfig = onSnapshot(collection(db, "config"), (snapshot) => {
-      if(!snapshot.empty) setConfig(snapshot.docs[0].data());
+      if(!snapshot.empty) setConfig(snapshot.docs[0].data() || {});
     });
     const unsubOrders = onSnapshot(collection(db, "orders"), (snapshot) => {
       setAllOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -94,13 +99,14 @@ export default function Website() {
     return () => { unsubProducts(); unsubConfig(); unsubOrders(); };
   }, [mounted]);
 
+  // --- User Profile Sync (Cloud Only) ---
   useEffect(() => {
     if(!uid) return;
     const unsubUser = onSnapshot(doc(db, "customers", uid), (docSnap) => {
        if(docSnap.exists()){
          const data = docSnap.data();
-         setCart(data.cart || []);
-         setWishlist(data.wishlist || []);
+         setCart(Array.isArray(data.cart) ? data.cart : []);
+         setWishlist(Array.isArray(data.wishlist) ? data.wishlist : []);
          setUser(data.profile || null);
        }
     });
@@ -109,7 +115,7 @@ export default function Website() {
 
   const updateCloudData = async (field, data) => {
     if(!uid) return;
-    try { await setDoc(doc(db, "customers", uid), { [field]: data }, { merge: true }); } catch(e) {}
+    try { await setDoc(doc(db, "customers", uid), { [field]: data }, { merge: true }); } catch(e) { console.error(e); }
   };
 
   const showToast = (message) => {
@@ -117,6 +123,7 @@ export default function Website() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  // --- Cart & Wishlist Handlers ---
   const addToCart = (product, openDrawer = false) => {
     let newCart = [...cart];
     const existingIndex = newCart.findIndex(i => i.id === product.id);
@@ -127,7 +134,7 @@ export default function Website() {
     updateCloudData('cart', newCart); 
     if(!selectedCartItems.includes(product.id)) setSelectedCartItems([...selectedCartItems, product.id]);
     
-    showToast(`${product.name} added to cart!`);
+    showToast(`${product.name || 'Item'} added to cart!`);
     if(openDrawer) setIsCartOpen(true);
   };
 
@@ -144,7 +151,7 @@ export default function Website() {
   };
 
   const toggleWishlist = (product) => {
-    const exists = wishlist.find(i => i.id === product.id);
+    const exists = wishlist.some(i => i.id === product.id);
     let newWishlist;
     if (exists) { newWishlist = wishlist.filter(i => i.id !== product.id); showToast("Removed from Wishlist"); } 
     else { newWishlist = [...wishlist, product]; showToast("Added to Wishlist"); }
@@ -155,22 +162,24 @@ export default function Website() {
     setUser(profileData); updateCloudData('profile', profileData); showToast("Profile Saved!");
   };
 
-  const categories = ["All", ...new Set(products.map(p => p.category).filter(Boolean))];
-  let displayedProducts = [...products];
+  // --- Processing Products safely ---
+  const categories = ["All", ...new Set((products || []).map(p => p.category).filter(Boolean))];
+  let displayedProducts = [...(products || [])];
   if (searchTerm) displayedProducts = displayedProducts.filter(p => p.name?.toLowerCase().includes(searchTerm.toLowerCase()));
   if (activeCategory !== "All") displayedProducts = displayedProducts.filter(p => p.category === activeCategory);
   if (sortBy === "price-low") displayedProducts.sort((a,b) => (Number(a.price)||0) - (Number(b.price)||0));
   if (sortBy === "price-high") displayedProducts.sort((a,b) => (Number(b.price)||0) - (Number(a.price)||0));
 
-  const relatedProducts = selectedProduct ? products.filter(p => p.category === selectedProduct.category && p.id !== selectedProduct.id).slice(0,4) : [];
-  const myOrders = allOrders.filter(o => o.userId === uid || (user && o.phone === user.phone));
+  const relatedProducts = selectedProduct ? (products || []).filter(p => p.category === selectedProduct.category && p.id !== selectedProduct.id).slice(0,4) : [];
+  
+  // Safe filtering for user orders
+  const myOrders = (allOrders || []).filter(o => o.userId === uid || (user?.phone && o.phone === user.phone));
 
   if (!mounted) return <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center text-zinc-500"><div className="w-10 h-10 border-4 border-zinc-800 border-t-orange-500 rounded-full animate-spin mb-4"></div><p className="font-bold tracking-widest text-xs uppercase">Loading Royce...</p></div>;
 
   return (
     <div className="font-sans text-white bg-[#0a0a0a] min-h-screen pb-24 selection:bg-orange-500 selection:text-white relative">
       
-      {/* --- Kabaaru (Toast) --- */}
       {toast && (
         <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 animate-slideInDown">
           <div className="bg-[#121212] border border-zinc-700 text-white px-5 py-3 rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.8)] flex items-center gap-2 font-bold text-sm">
@@ -179,7 +188,6 @@ export default function Website() {
         </div>
       )}
 
-      {/* --- Hoore (Header) - Hidden in Profile View for AliExpress look --- */}
       {view !== 'account' && (
         <header className="sticky top-0 z-40 bg-[#0a0a0a]/80 backdrop-blur-xl border-b border-zinc-800/80">
           <div className="max-w-md mx-auto px-5 py-4 flex items-center justify-between">
@@ -188,7 +196,7 @@ export default function Website() {
             ) : (
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 bg-gradient-to-tr from-orange-600 to-orange-400 rounded-xl flex items-center justify-center text-black font-black text-lg shadow-[0_0_15px_rgba(249,115,22,0.4)]">R</div>
-                <span className="font-black text-xl tracking-widest text-white uppercase">{config.shopName || 'ROYCE'}</span>
+                <span className="font-black text-xl tracking-widest text-white uppercase">{config?.shopName || 'ROYCE'}</span>
               </div>
             )}
             
@@ -205,7 +213,7 @@ export default function Website() {
 
       <main className="max-w-md mx-auto">
         
-        {/* --- Yiyngo Galle (HOME) --- */}
+        {/* --- HOME --- */}
         {view === 'home' && (
           <div className="animate-fadeIn">
             <div className="px-5 pt-5 pb-3">
@@ -220,8 +228,8 @@ export default function Website() {
                 <div className="bg-zinc-900 rounded-[2rem] p-6 text-white relative overflow-hidden border border-zinc-800 shadow-[0_10px_30px_rgba(0,0,0,0.5)] h-48 flex flex-col justify-center">
                   <div className="relative z-10 w-[70%]">
                     {config.heroBadge && <span className="inline-block bg-orange-500/10 text-orange-500 text-[9px] font-black px-3 py-1.5 rounded-lg uppercase tracking-widest mb-3 border border-orange-500/20">{config.heroBadge}</span>}
-                    <h2 className="text-3xl font-black mb-1.5 leading-tight text-white tracking-tight">{config.heroTitle || "New Drop"}</h2>
-                    <p className="text-zinc-400 text-xs font-medium">{config.heroSubtitle}</p>
+                    <h2 className="text-3xl font-black mb-1.5 leading-tight text-white tracking-tight">{config?.heroTitle || "New Drop"}</h2>
+                    <p className="text-zinc-400 text-xs font-medium">{config?.heroSubtitle}</p>
                   </div>
                   {config.heroImage && <img src={config.heroImage} className="absolute right-0 top-0 h-full w-2/3 object-cover opacity-50 mix-blend-screen pointer-events-none mask-image-gradient" />}
                   <div className="absolute inset-0 bg-gradient-to-r from-zinc-900 via-zinc-900/90 to-transparent pointer-events-none"></div>
@@ -245,7 +253,7 @@ export default function Website() {
             
             <div className="px-5 pt-2">
               {loadingProducts ? (
-                <div className="flex flex-col items-center justify-center py-20 text-zinc-500"><div className="w-8 h-8 border-4 border-zinc-800 border-t-orange-500 rounded-full animate-spin mb-3"></div><p className="text-sm font-medium tracking-widest uppercase text-[10px]">Loading Cloud Data...</p></div>
+                <div className="flex flex-col items-center justify-center py-20 text-zinc-500"><div className="w-8 h-8 border-4 border-zinc-800 border-t-orange-500 rounded-full animate-spin mb-3"></div><p className="text-sm font-medium tracking-widest uppercase text-[10px]">Loading Catalog...</p></div>
               ) : displayedProducts.length === 0 ? (
                 <div className="text-center py-20 text-zinc-500 bg-zinc-900/30 rounded-[2rem] border border-dashed border-zinc-800"><Search size={40} className="mx-auto mb-3 opacity-20"/><p className="font-medium text-sm">No items found.</p></div>
               ) : (
@@ -259,7 +267,7 @@ export default function Website() {
           </div>
         )}
         
-        {/* --- DETAILS VIEW --- */}
+        {/* --- DETAILS --- */}
         {view === 'details' && selectedProduct && (
           <div className="animate-slideInRight bg-[#0a0a0a] min-h-screen">
             <div className="relative bg-[#121212] border-b border-zinc-800 rounded-b-[3rem] shadow-2xl">
@@ -274,19 +282,19 @@ export default function Website() {
 
             <div className="px-6 py-8 relative">
               <div className="flex items-center gap-3 mb-4">
-                 <span className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-widest">{selectedProduct.category}</span>
+                 <span className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-widest">{selectedProduct?.category || 'Gadget'}</span>
                  <div className="bg-orange-500/10 px-2 py-1 rounded-lg border border-orange-500/20 flex items-center gap-1"><Star size={12} className="text-orange-500" fill="currentColor"/><span className="text-xs font-black text-orange-500">4.9</span></div>
               </div>
-              <h1 className="text-3xl font-black text-white leading-tight mb-4">{selectedProduct.name}</h1>
+              <h1 className="text-3xl font-black text-white leading-tight mb-4">{selectedProduct?.name || 'Item'}</h1>
               <div className="flex items-end mb-8 bg-[#121212] p-5 rounded-3xl border border-zinc-800 w-max">
-                <span className="text-4xl font-black text-orange-500 tracking-tight">{config.currency || '৳'}{selectedProduct.price}</span>
-                {selectedProduct.originalPrice && <span className="text-lg text-zinc-500 line-through ml-3 mb-1 font-medium">{config.currency || '৳'}{selectedProduct.originalPrice}</span>}
+                <span className="text-4xl font-black text-orange-500 tracking-tight">{config?.currency || '৳'}{selectedProduct?.price || 0}</span>
+                {selectedProduct?.originalPrice && <span className="text-lg text-zinc-500 line-through ml-3 mb-1 font-medium">{config?.currency || '৳'}{selectedProduct.originalPrice}</span>}
               </div>
               <h3 className="font-black text-lg mb-4 text-white flex items-center gap-2">Details</h3>
-              <p className="text-zinc-400 text-sm leading-relaxed mb-8 bg-zinc-900/50 p-5 rounded-2xl border border-zinc-800">{selectedProduct.details}</p>
+              <p className="text-zinc-400 text-sm leading-relaxed mb-8 bg-zinc-900/50 p-5 rounded-2xl border border-zinc-800">{selectedProduct?.details || 'No details provided.'}</p>
               <div className="bg-[#121212] p-5 rounded-2xl border border-zinc-800/80 flex items-center gap-4 mb-10">
                 <div className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center shrink-0 border border-zinc-800"><ShieldCheck size={20} className="text-zinc-300"/></div>
-                <div><h4 className="font-bold text-sm text-white">Warranty Policy</h4><p className="text-xs text-zinc-500 mt-1">{selectedProduct.warranty || 'Check physical product on delivery.'}</p></div>
+                <div><h4 className="font-bold text-sm text-white">Warranty Policy</h4><p className="text-xs text-zinc-500 mt-1">{selectedProduct?.warranty || 'Check physical product on delivery.'}</p></div>
               </div>
 
               {relatedProducts.length > 0 && (
@@ -295,9 +303,9 @@ export default function Website() {
                   <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
                     {relatedProducts.map(rp => (
                       <div key={rp.id} onClick={() => { setSelectedProduct(rp); window.scrollTo(0,0); }} className="min-w-[140px] bg-[#121212] rounded-2xl p-3 border border-zinc-800 shrink-0 cursor-pointer active:scale-95 transition">
-                        <img src={rp.images[0]} className="w-full h-24 object-contain mb-3 drop-shadow-md bg-zinc-900 rounded-xl p-2" />
+                        <img src={rp.images?.[0]} className="w-full h-24 object-contain mb-3 drop-shadow-md bg-zinc-900 rounded-xl p-2" />
                         <h4 className="font-bold text-xs text-white line-clamp-1">{rp.name}</h4>
-                        <p className="text-orange-500 font-black text-sm mt-1">{config.currency || '৳'}{rp.price}</p>
+                        <p className="text-orange-500 font-black text-sm mt-1">{config?.currency || '৳'}{rp.price}</p>
                       </div>
                     ))}
                   </div>
@@ -314,7 +322,7 @@ export default function Website() {
           </div>
         )}
         
-        {/* --- WISHLIST VIEW --- */}
+        {/* --- WISHLIST --- */}
         {view === 'wishlist' && (
            <div className="animate-fadeIn pt-6 px-5 pb-20">
              <h2 className="font-black text-2xl mb-6 text-white flex items-center gap-2"><Heart className="text-orange-500"/> My Wishlist</h2>
@@ -334,7 +342,7 @@ export default function Website() {
            </div>
         )}
 
-        {/* --- ALIEXPRESS STYLE ACCOUNT DASHBOARD --- */}
+        {/* --- ALIEXPRESS ACCOUNT DASHBOARD --- */}
         {view === 'account' && <AliExpressDashboard user={user} onSave={saveUserProfile} showToast={showToast} myOrders={myOrders} config={config} products={products} setView={setView} setSelectedProduct={setSelectedProduct} toggleWishlist={toggleWishlist} wishlist={wishlist} addToCart={addToCart} />}
       </main>
 
@@ -351,22 +359,21 @@ export default function Website() {
             </div>
             
             <button onClick={()=>setView('wishlist')} className={`flex-1 flex flex-col items-center justify-center h-12 rounded-full transition-all ${view==='wishlist'?'text-white bg-zinc-800':'text-zinc-500 hover:text-zinc-300'}`}>
-              <div className="relative"><Heart size={20}/>{wishlist.length > 0 && <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-[#121212]"></span>}</div>
+              <div className="relative"><Heart size={20}/>{(wishlist||[]).length > 0 && <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-[#121212]"></span>}</div>
             </button>
             <button onClick={()=>setView('account')} className={`flex-1 flex flex-col items-center justify-center h-12 rounded-full transition-all ${view==='account'?'text-white bg-zinc-800':'text-zinc-500 hover:text-zinc-300'}`}><User size={20}/></button>
           </div>
         </div>
       )}
 
-      {/* --- Soodu (Cart Drawer) --- */}
       {isCartOpen && <CartDrawer uid={uid} cart={cart} updateCartQty={updateCartQty} removeCartItem={removeCartItem} selectedItems={selectedCartItems} setSelectedItems={setSelectedCartItems} onClose={() => setIsCartOpen(false)} user={user} config={config} db={db} setView={setView} showToast={showToast} clearCartFromCloud={(newCart) => { setCart(newCart); updateCloudData('cart', newCart); }} />}
     </div>
   );
 }
 
-// --- Reusable Product Card Component ---
+// --- SAFE PRODUCT CARD ---
 function ProductCard({ product, config, wishlist, toggleWishlist, addToCart, setView, setSelectedProduct }) {
-  const isWishlisted = wishlist.some(i => i.id === product.id);
+  const isWishlisted = (wishlist || []).some(i => i.id === product.id);
   return (
     <div className="bg-[#121212] rounded-3xl p-3.5 border border-zinc-800/80 relative group flex flex-col h-full hover:border-zinc-700 transition-colors shadow-lg">
       <button onClick={(e) => { e.stopPropagation(); toggleWishlist(product); }} className="absolute top-4 right-4 z-20 w-8 h-8 bg-[#0a0a0a]/80 backdrop-blur-md rounded-full flex items-center justify-center border border-zinc-800 active:scale-90 transition"><Heart size={14} fill={isWishlisted ? "currentColor" : "none"} className={isWishlisted ? "text-orange-500" : "text-zinc-400"} /></button>
@@ -376,13 +383,13 @@ function ProductCard({ product, config, wishlist, toggleWishlist, addToCart, set
       </div>
       <div className="flex-1 flex flex-col justify-between px-1">
         <div className="mb-3">
-          <span className="text-[9px] text-zinc-500 font-black uppercase tracking-widest">{product.category}</span>
-          <h3 className="font-bold text-zinc-100 text-sm line-clamp-2 leading-snug cursor-pointer mt-1" onClick={() => { setSelectedProduct(product); setView('details'); }}>{product.name}</h3>
+          <span className="text-[9px] text-zinc-500 font-black uppercase tracking-widest">{product?.category || ''}</span>
+          <h3 className="font-bold text-zinc-100 text-sm line-clamp-2 leading-snug cursor-pointer mt-1" onClick={() => { setSelectedProduct(product); setView('details'); }}>{product?.name || 'Item'}</h3>
         </div>
         <div className="flex items-center justify-between mt-auto">
           <div>
-            <span className="text-lg font-black text-white">{config.currency || '৳'}{product.price}</span>
-            {product.originalPrice && <p className="text-[10px] text-zinc-500 line-through -mt-1">{config.currency || '৳'}{product.originalPrice}</p>}
+            <span className="text-lg font-black text-white">{config?.currency || '৳'}{product?.price || 0}</span>
+            {product?.originalPrice && <p className="text-[10px] text-zinc-500 line-through -mt-1">{config?.currency || '৳'}{product.originalPrice}</p>}
           </div>
           <button onClick={(e) => { e.stopPropagation(); addToCart(product, false); }} className="w-9 h-9 bg-zinc-800 text-white rounded-xl flex items-center justify-center active:scale-90 transition hover:bg-orange-500 hover:text-black border border-zinc-700"><ShoppingCart size={16}/></button>
         </div>
@@ -391,11 +398,20 @@ function ProductCard({ product, config, wishlist, toggleWishlist, addToCart, set
   );
 }
 
-// --- ALIEXPRESS / DARAZ STYLE DASHBOARD ---
+// --- ABSOLUTE CRASH-PROOF DASHBOARD ---
 function AliExpressDashboard({ user, onSave, showToast, myOrders, config, products, setView, setSelectedProduct, toggleWishlist, wishlist, addToCart }) {
-  const [isEditing, setIsEditing] = useState(false);
+  // Always safe fallback for user properties
+  const safeUser = user || {};
+  const [isEditing, setIsEditing] = useState(!user || !user.name);
   const [activeOrderTab, setActiveOrderTab] = useState(null); 
-  const [form, setForm] = useState(user || { deliveryType: 'Home Del.', phone: '', name: '', division: '', district: '', address: '' });
+  const [form, setForm] = useState({ 
+    deliveryType: safeUser.deliveryType || 'Home Del.', 
+    phone: safeUser.phone || '', 
+    name: safeUser.name || '', 
+    division: safeUser.division || '', 
+    district: safeUser.district || '', 
+    address: safeUser.address || '' 
+  });
 
   const handleSave = () => {
     if(!form.name || !form.phone || !form.division || !form.district || !form.address) return showToast("Please fill all details!");
@@ -405,18 +421,18 @@ function AliExpressDashboard({ user, onSave, showToast, myOrders, config, produc
   const divisions = Object.keys(BD_LOCATIONS);
   const districts = (form.division && Array.isArray(BD_LOCATIONS[form.division])) ? BD_LOCATIONS[form.division] : [];
 
-  const toPayShip = myOrders.filter(o => o.status === 'Pending').length;
-  const toReceive = myOrders.filter(o => o.status === 'Shipped').length;
-  const toReview = myOrders.filter(o => o.status === 'Completed').length;
-  const cancellations = myOrders.filter(o => o.status === 'Cancelled').length;
+  const toPayShip = (myOrders||[]).filter(o => o.status === 'Pending').length;
+  const toReceive = (myOrders||[]).filter(o => o.status === 'Shipped').length;
+  const toReview = (myOrders||[]).filter(o => o.status === 'Completed').length;
+  const cancellations = (myOrders||[]).filter(o => o.status === 'Cancelled').length;
 
-  const filteredOrdersModal = activeOrderTab ? myOrders.filter(o => o.status === activeOrderTab || (activeOrderTab === 'Pending' && o.status === 'Pending')) : [];
+  const filteredOrdersModal = activeOrderTab ? (myOrders||[]).filter(o => o.status === activeOrderTab || (activeOrderTab === 'Pending' && o.status === 'Pending')) : [];
 
-  if (isEditing || !user) {
+  if (isEditing || !user?.name) {
     return (
       <div className="px-4 pt-4 pb-32 animate-fadeIn min-h-screen">
         <div className="flex items-center gap-3 mb-6 pl-2">
-           {user && <button onClick={()=>setIsEditing(false)} className="p-2 bg-zinc-900 rounded-full text-zinc-400 hover:text-white"><ChevronLeft size={20}/></button>}
+           {user?.name && <button onClick={()=>setIsEditing(false)} className="p-2 bg-zinc-900 rounded-full text-zinc-400 hover:text-white"><ChevronLeft size={20}/></button>}
            <h2 className="font-black text-xl text-white">Delivery Profile</h2>
         </div>
         <div className="bg-[#121212] p-6 rounded-[2rem] shadow-2xl border border-zinc-800/80 max-w-md mx-auto relative overflow-hidden">
@@ -444,44 +460,46 @@ function AliExpressDashboard({ user, onSave, showToast, myOrders, config, produc
     )
   }
 
+  // Safe variables for display
+  const displayChar = user?.name ? user.name.charAt(0).toUpperCase() : 'U';
+  const displayName = user?.name || 'Customer';
+  const displayPhone = user?.phone || '';
+
   return (
     <div className="animate-fadeIn min-h-screen">
-      {/* 1. Header Area (Like Reference) */}
-      <div className="pt-8 pb-6 px-5 relative overflow-hidden">
+      {/* 1. Header Area */}
+      <div className="bg-[#121212] pt-8 pb-6 px-5 border-b border-zinc-800 rounded-b-[2rem] shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-orange-500/10 rounded-full blur-3xl pointer-events-none"></div>
         <div className="flex justify-between items-center relative z-10">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-zinc-800 rounded-full flex items-center justify-center font-black text-2xl text-white border border-zinc-700 shadow-inner relative">
-               {user.name.charAt(0)}
-               <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-[#0a0a0a] rounded-full"></div>
-            </div>
+            <div className="w-14 h-14 bg-zinc-800 rounded-full flex items-center justify-center font-black text-2xl text-orange-500 border border-zinc-700 shadow-inner">{displayChar}</div>
             <div>
-               <h2 className="text-xl font-black text-white">{user.name}</h2>
+               <h2 className="text-xl font-black text-white">{displayName}</h2>
                <div className="flex items-center gap-2 mt-1">
-                 <span className="text-zinc-400 text-xs font-medium">{user.phone}</span>
+                 <span className="text-zinc-400 text-xs font-medium">{displayPhone}</span>
                  <span className="bg-zinc-800 text-zinc-300 text-[9px] px-2 py-0.5 rounded font-black uppercase tracking-widest border border-zinc-700">LVL 1</span>
                </div>
             </div>
           </div>
           <div className="flex items-center gap-3">
-             <button onClick={()=>setIsEditing(true)} className="text-zinc-300 hover:text-white transition active:scale-90"><Settings size={24}/></button>
-             <button className="text-zinc-300 hover:text-white transition active:scale-90 relative"><Bell size={24}/><span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#0a0a0a]"></span></button>
+             <button onClick={()=>setIsEditing(true)} className="p-2 bg-zinc-900 rounded-full text-zinc-300 hover:text-white border border-zinc-800"><Settings size={20}/></button>
           </div>
         </div>
       </div>
 
-      <div className="px-4 py-2 space-y-4 max-w-md mx-auto pb-24">
+      <div className="px-4 py-4 space-y-4 max-w-md mx-auto pb-24">
         
         {/* Sales Banner */}
-        <div className="bg-gradient-to-r from-orange-600 to-orange-500 rounded-2xl p-4 flex justify-between items-center text-black shadow-[0_5px_20px_rgba(249,115,22,0.2)] cursor-pointer active:scale-95 transition" onClick={()=>setView('home')}>
+        <div className="bg-gradient-to-r from-orange-600 to-orange-400 rounded-[1.5rem] p-4 flex justify-between items-center text-black shadow-[0_5px_20px_rgba(249,115,22,0.3)] cursor-pointer active:scale-95 transition" onClick={()=>setView('home')}>
            <div>
-             <span className="font-black italic tracking-widest text-lg block leading-none">{config.heroBadge || "SUPER SALE"}</span>
+             <span className="font-black italic tracking-widest text-lg block leading-none">{config?.heroBadge || "SUPER SALE"}</span>
              <span className="text-[10px] font-bold opacity-80 mt-1 block">Tap to discover deals & offers</span>
            </div>
            <ChevronRight size={20} className="opacity-80"/>
         </div>
 
         {/* 2. My Orders Section */}
-        <div className="bg-[#121212] p-5 rounded-3xl border border-zinc-800/80 shadow-lg">
+        <div className="bg-[#121212] p-5 rounded-[2rem] border border-zinc-800 shadow-lg">
            <div className="flex justify-between items-center mb-5">
              <h3 className="font-black text-base text-white">My orders</h3>
              <span onClick={()=>setActiveOrderTab('Pending')} className="text-xs font-bold text-zinc-500 cursor-pointer hover:text-white transition flex items-center">View all <ChevronRight size={14} className="ml-0.5"/></span>
@@ -495,44 +513,22 @@ function AliExpressDashboard({ user, onSave, showToast, myOrders, config, produc
            </div>
         </div>
 
-        {/* 3. Features Grid & Promo Cards */}
-        <div className="grid grid-cols-2 gap-3">
-           <div className="bg-[#121212] p-4 rounded-3xl border border-zinc-800/80 shadow-lg flex flex-col justify-center cursor-pointer hover:bg-zinc-900 transition" onClick={()=>setView('wishlist')}>
-              <h4 className="font-black text-sm text-white mb-1">Wishlist</h4>
-              <p className="text-[10px] text-zinc-500 font-medium mb-3">Saved items</p>
-              <div className="w-8 h-8 bg-zinc-800 rounded-full flex items-center justify-center text-orange-500"><Heart size={16}/></div>
-           </div>
-           
-           <div className="bg-[#121212] p-4 rounded-3xl border border-zinc-800/80 shadow-lg flex flex-col justify-center cursor-pointer hover:bg-zinc-900 transition" onClick={()=>{window.open(`https://wa.me/${config.whatsapp}`, '_blank')}}>
-              <h4 className="font-black text-sm text-white mb-1">Help Center</h4>
-              <p className="text-[10px] text-zinc-500 font-medium mb-3">24/7 Support</p>
-              <div className="w-8 h-8 bg-zinc-800 rounded-full flex items-center justify-center text-blue-400"><Headphones size={16}/></div>
-           </div>
-        </div>
-        
-        <div className="grid grid-cols-2 gap-3 mb-6">
-           <div className="bg-gradient-to-br from-zinc-800 to-zinc-900 p-4 rounded-3xl border border-zinc-700 shadow-lg flex justify-between items-center cursor-pointer" onClick={()=>showToast("No active bundles")}>
-              <div>
-                <h4 className="font-black text-sm text-white mb-0.5">Bundles</h4>
-                <p className="text-[10px] text-orange-400 font-bold">Hot deals</p>
-              </div>
-              <Gift size={24} className="text-orange-500 opacity-80"/>
-           </div>
-           <div className="bg-gradient-to-br from-zinc-800 to-zinc-900 p-4 rounded-3xl border border-zinc-700 shadow-lg flex justify-between items-center cursor-pointer" onClick={()=>showToast("No coupons available")}>
-              <div>
-                <h4 className="font-black text-sm text-white mb-0.5">Coupons</h4>
-                <p className="text-[10px] text-zinc-400 font-bold">Get discounts</p>
-              </div>
-              <Ticket size={24} className="text-zinc-500 opacity-80"/>
+        {/* 3. Features Grid */}
+        <div className="bg-[#121212] p-5 rounded-[2rem] border border-zinc-800 shadow-lg mb-6">
+           <div className="grid grid-cols-4 gap-y-6 text-center">
+              <FeatureIcon icon={<Clock size={26} strokeWidth={1.5}/>} label="History" onClick={()=>setActiveOrderTab('Pending')}/>
+              <FeatureIcon icon={<Heart size={26} strokeWidth={1.5}/>} label="Wishlist" onClick={()=>setView('wishlist')}/>
+              <FeatureIcon icon={<Ticket size={26} strokeWidth={1.5}/>} label="Coupons" onClick={()=>showToast("No coupons available")}/>
+              <FeatureIcon icon={<Headphones size={26} strokeWidth={1.5}/>} label="Help" onClick={()=>{window.open(`https://wa.me/${config?.whatsapp || ''}`, '_blank')}}/>
            </div>
         </div>
 
-        {/* 4. More to love (Recommendations) */}
-        {products.length > 0 && (
+        {/* 4. More to love */}
+        {(products||[]).length > 0 && (
           <div className="pt-2">
             <h3 className="font-black text-xl text-white mb-4 px-2 flex items-center gap-2"><Zap size={20} className="text-orange-500" fill="currentColor"/> More to love</h3>
             <div className="grid grid-cols-2 gap-3">
-              {products.slice(0, 8).map(product => (
+              {(products||[]).slice(0, 8).map(product => (
                 <ProductCard key={product.id} product={product} config={config} wishlist={wishlist} toggleWishlist={toggleWishlist} addToCart={addToCart} setView={setView} setSelectedProduct={setSelectedProduct} />
               ))}
             </div>
@@ -557,24 +553,24 @@ function AliExpressDashboard({ user, onSave, showToast, myOrders, config, produc
                  filteredOrdersModal.map(order => (
                    <div key={order.id} className="bg-[#121212] rounded-2xl border border-zinc-800 p-4 relative overflow-hidden shadow-sm">
                      <div className="flex justify-between items-center border-b border-zinc-800/50 pb-3 mb-3">
-                       <span className="text-[10px] font-mono text-zinc-500 flex items-center gap-1"><Clock size={12}/> {order.date?.split(',')[0]}</span>
-                       <span className="text-[10px] font-black uppercase bg-zinc-900 px-2 py-1 rounded text-orange-500 border border-zinc-800">{order.status}</span>
+                       <span className="text-[10px] font-mono text-zinc-500 flex items-center gap-1"><Clock size={12}/> {order?.date?.split(',')[0] || ''}</span>
+                       <span className="text-[10px] font-black uppercase bg-zinc-900 px-2 py-1 rounded text-orange-500 border border-zinc-800">{order?.status || ''}</span>
                      </div>
                      <div className="space-y-3">
-                       {order.items?.map((item, i) => (
+                       {(order.items||[]).map((item, i) => (
                          <div key={i} className="flex gap-3 items-center">
-                           <img src={item.images?.[0]} className="w-12 h-12 rounded-lg bg-zinc-900 object-contain p-1 border border-zinc-800"/>
+                           <img src={item?.images?.[0]} className="w-12 h-12 rounded-lg bg-zinc-900 object-contain p-1 border border-zinc-800"/>
                            <div className="flex-1">
-                             <p className="text-sm font-bold text-zinc-200 line-clamp-1">{item.name}</p>
-                             <p className="text-[10px] font-black text-zinc-500 mt-1">Qty: {item.qty}</p>
+                             <p className="text-sm font-bold text-zinc-200 line-clamp-1">{item?.name || ''}</p>
+                             <p className="text-[10px] font-black text-zinc-500 mt-1">Qty: {item?.qty || 1}</p>
                            </div>
-                           <p className="font-black text-white">{config.currency}{item.price * item.qty}</p>
+                           <p className="font-black text-white">{config?.currency || '৳'}{(Number(item?.price)||0) * (Number(item?.qty)||1)}</p>
                          </div>
                        ))}
                      </div>
                      <div className="border-t border-zinc-800/50 mt-4 pt-3 flex justify-between items-center">
                        <span className="text-xs font-bold text-zinc-500">Total Bill</span>
-                       <span className="font-black text-lg text-orange-500">{config.currency}{order.total}</span>
+                       <span className="font-black text-lg text-orange-500">{config?.currency || '৳'}{order?.total || 0}</span>
                      </div>
                    </div>
                  ))
@@ -599,18 +595,27 @@ function TrackIcon({ icon, label, count, onClick }) {
   );
 }
 
-// --- Cart Drawer (Checkboxes included) ---
+function FeatureIcon({ icon, label, onClick }) {
+  return (
+    <button onClick={onClick} className="flex flex-col items-center justify-center gap-2 active:scale-95 transition">
+       <div className="text-zinc-300">{icon}</div>
+       <span className="text-[10px] font-bold text-zinc-500">{label}</span>
+    </button>
+  );
+}
+
+// --- Cart Drawer ---
 function CartDrawer({ uid, cart, updateCartQty, removeCartItem, selectedItems, setSelectedItems, onClose, user, config, db, setView, showToast, clearCartFromCloud }) {
   const [loading, setLoading] = useState(false);
   
-  const selectedCartObjects = cart.filter(item => selectedItems.includes(item.id));
+  const selectedCartObjects = (cart||[]).filter(item => selectedItems.includes(item.id));
   const subtotal = selectedCartObjects.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.qty) || 1)), 0);
-  const delivery = selectedCartObjects.length > 0 ? (Number(config.deliveryCharge) || 0) : 0;
+  const delivery = selectedCartObjects.length > 0 ? (Number(config?.deliveryCharge) || 0) : 0;
   const total = subtotal + delivery;
 
-  const isAllSelected = cart.length > 0 && selectedItems.length === cart.length;
+  const isAllSelected = (cart||[]).length > 0 && selectedItems.length === cart.length;
 
-  const toggleAll = () => { if(isAllSelected) setSelectedItems([]); else setSelectedItems(cart.map(i => i.id)); };
+  const toggleAll = () => { if(isAllSelected) setSelectedItems([]); else setSelectedItems((cart||[]).map(i => i.id)); };
   const toggleItem = (id) => { if(selectedItems.includes(id)) setSelectedItems(selectedItems.filter(i => i !== id)); else setSelectedItems([...selectedItems, id]); };
 
   const handleCheckout = async () => {
@@ -636,7 +641,7 @@ function CartDrawer({ uid, cart, updateCartQty, removeCartItem, selectedItems, s
       selectedCartObjects.forEach(item => { msg += `▪ ${item.qty}x ${item.name} (৳${item.price * item.qty})\n`; });
       msg += `\nSubtotal: ৳${subtotal}\nDelivery: ৳${delivery}\n*Total Bill: ৳${total}*`;
 
-      const whatsappNum = config.whatsapp || "8801700000000";
+      const whatsappNum = config?.whatsapp || "8801700000000";
       const waUrl = `https://wa.me/${whatsappNum}?text=${encodeURIComponent(msg)}`;
 
       const remainingItems = cart.filter(item => !selectedItems.includes(item.id));
@@ -656,18 +661,18 @@ function CartDrawer({ uid, cart, updateCartQty, removeCartItem, selectedItems, s
         
         <div className="bg-[#121212] px-5 py-4 flex justify-between items-center z-10 border-b border-zinc-800">
           <div className="flex items-center gap-3">
-             {cart.length > 0 && (
+             {(cart||[]).length > 0 && (
                <button onClick={toggleAll} className="text-zinc-400 hover:text-white transition active:scale-90">
                  {isAllSelected ? <CheckSquare size={20} className="text-orange-500"/> : <Square size={20}/>}
                </button>
              )}
-             <h3 className="font-black text-lg text-white">Cart <span className="text-zinc-500 font-medium text-sm">({cart.length})</span></h3>
+             <h3 className="font-black text-lg text-white">Cart <span className="text-zinc-500 font-medium text-sm">({(cart||[]).length})</span></h3>
           </div>
           <button onClick={onClose} className="w-8 h-8 bg-zinc-900 rounded-full flex items-center justify-center hover:bg-zinc-800 border border-zinc-800 transition active:scale-90"><X size={16} className="text-zinc-400"/></button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {cart.length === 0 ? (
+          {(cart||[]).length === 0 ? (
              <div className="flex flex-col items-center justify-center h-full text-zinc-600 space-y-5">
                <div className="w-24 h-24 bg-zinc-900 rounded-full flex items-center justify-center border border-zinc-800 shadow-inner"><ShoppingCart size={32} className="text-zinc-600"/></div>
                <p className="font-medium text-zinc-500">Your cart is feeling empty.</p>
@@ -675,18 +680,18 @@ function CartDrawer({ uid, cart, updateCartQty, removeCartItem, selectedItems, s
              </div>
           ) : (
             <>
-              {cart.map(item => {
+              {(cart||[]).map(item => {
                 const isSelected = selectedItems.includes(item.id);
                 return (
                   <div key={item.id} className={`bg-[#121212] p-3 rounded-2xl border flex gap-3 relative pr-10 transition-colors ${isSelected ? 'border-orange-500/50 bg-orange-500/5' : 'border-zinc-800'}`}>
                     <div className="flex items-center justify-center pl-1 cursor-pointer" onClick={() => toggleItem(item.id)}>
                        {isSelected ? <CheckSquare size={20} className="text-orange-500"/> : <Square size={20} className="text-zinc-600"/>}
                     </div>
-                    <div className="w-20 h-20 bg-zinc-900 rounded-xl overflow-hidden flex items-center justify-center p-2"><img src={item.images[0]} className="w-full h-full object-contain drop-shadow-md"/></div>
+                    <div className="w-20 h-20 bg-zinc-900 rounded-xl overflow-hidden flex items-center justify-center p-2"><img src={item.images?.[0]} className="w-full h-full object-contain drop-shadow-md"/></div>
                     <div className="flex-1 flex flex-col justify-center py-1">
                       <h4 className="font-bold text-sm text-zinc-200 line-clamp-2 leading-snug mb-2 pr-2 cursor-pointer" onClick={() => toggleItem(item.id)}>{item.name}</h4>
                       <div className="flex justify-between items-end mt-auto">
-                        <p className="text-orange-500 font-black">{config.currency || '৳'}{item.price}</p>
+                        <p className="text-orange-500 font-black">{config?.currency || '৳'}{item.price}</p>
                         <div className="flex gap-4 items-center bg-zinc-900 rounded-lg px-2 py-1 w-max border border-zinc-800">
                           <button className="text-zinc-400 font-bold text-lg px-1 active:scale-90" onClick={()=>updateCartQty(item.id, Math.max(1, (item.qty||1)-1))}>-</button>
                           <span className="text-sm font-black w-4 text-center text-white">{item.qty || 1}</span>
@@ -717,14 +722,14 @@ function CartDrawer({ uid, cart, updateCartQty, removeCartItem, selectedItems, s
           )}
         </div>
 
-        {cart.length > 0 && (
+        {(cart||[]).length > 0 && (
           <div className="p-5 bg-[#121212] border-t border-zinc-800 z-10 rounded-tl-3xl shadow-[0_-10px_40px_rgba(0,0,0,1)]">
             <div className="space-y-2.5 mb-4 text-sm font-bold text-zinc-400">
-              <div className="flex justify-between"><span>Selected ({selectedCartObjects.reduce((a,b)=>a+(b.qty||1),0)})</span><span className="text-white">{config.currency || '৳'}{subtotal}</span></div>
-              <div className="flex justify-between"><span>Delivery Fee</span><span className="text-white">{selectedCartObjects.length > 0 ? `${config.currency || '৳'}${delivery}` : '৳0'}</span></div>
+              <div className="flex justify-between"><span>Selected ({selectedCartObjects.reduce((a,b)=>a+(b.qty||1),0)})</span><span className="text-white">{config?.currency || '৳'}{subtotal}</span></div>
+              <div className="flex justify-between"><span>Delivery Fee</span><span className="text-white">{selectedCartObjects.length > 0 ? `${config?.currency || '৳'}${delivery}` : '৳0'}</span></div>
             </div>
             <div className="flex justify-between mb-5 font-black text-xl text-white border-t border-dashed border-zinc-800 pt-3">
-              <span>Grand Total</span><span className="text-orange-500">{config.currency || '৳'}{total}</span>
+              <span>Grand Total</span><span className="text-orange-500">{config?.currency || '৳'}{total}</span>
             </div>
             <button onClick={handleCheckout} disabled={loading || selectedCartObjects.length === 0} className="w-full bg-white text-black py-4 rounded-2xl font-black text-lg shadow-[0_0_20px_rgba(255,255,255,0.1)] active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
               {loading ? 'Processing...' : <><CreditCard size={20}/> Checkout ({selectedCartObjects.length})</>}
