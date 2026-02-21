@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "firebase": "^10.8.1",
     "lucide-react": "latest",
     "next": "16.1.6",
     "react": "19.2.3",
@@ -25,4 +26,5 @@
     "typescript": "^5"
   }
 }
+
 
