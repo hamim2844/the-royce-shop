@@ -6,7 +6,7 @@ import { getFirestore, collection, onSnapshot, addDoc } from "firebase/firestore
 import { 
   ShoppingCart, X, Phone, MapPin, CheckCircle, Star, 
   ChevronLeft, Search, Home, Grid, User, Heart, Edit3, Trash2, 
-  ArrowRight, ShieldCheck, Map, CreditCard, ChevronDown, Share2, ArrowDownUp
+  ArrowRight, ShieldCheck, Map, CreditCard, ChevronDown, Share2, ArrowDownUp, CheckSquare, Square
 } from 'lucide-react';
 
 // --- Firebase Setup ---
@@ -35,9 +35,11 @@ const BD_LOCATIONS = {
 };
 
 export default function Website() {
-  const [view, setView] = useState('home');
+  const [view, setView] = useState('home'); // home, details, wishlist, account
   const [selectedProduct, setSelectedProduct] = useState(null);
+  
   const [cart, setCart] = useState([]);
+  const [selectedCartItems, setSelectedCartItems] = useState([]); // Stores IDs of selected items
   const [wishlist, setWishlist] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [user, setUser] = useState(null);
@@ -45,8 +47,8 @@ export default function Website() {
   // App States
   const [searchTerm, setSearchTerm] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
-  const [sortBy, setSortBy] = useState("default"); // default, low-high, high-low
-  const [toast, setToast] = useState(null); // Custom Alert System
+  const [sortBy, setSortBy] = useState("default");
+  const [toast, setToast] = useState(null); 
   
   // DB States
   const [products, setProducts] = useState([]);
@@ -90,12 +92,26 @@ export default function Website() {
       localStorage.setItem('royce_wishlist', JSON.stringify(wishlist));
       if(user) localStorage.setItem('royce_user', JSON.stringify(user));
     }
+    // Auto-select newly added items to cart
+    if(cart.length > 0) {
+       const unselectedNewItems = cart.filter(c => !selectedCartItems.includes(c.id)).map(c => c.id);
+       if(unselectedNewItems.length > 0) {
+         setSelectedCartItems([...selectedCartItems, ...unselectedNewItems]);
+       }
+    }
   }, [cart, wishlist, user]);
 
   const addToCart = (product, openDrawer = false) => {
     const existing = cart.find(i => i.id === product.id);
-    if (existing) setCart(cart.map(i => i.id === product.id ? { ...i, qty: i.qty + 1 } : i));
-    else setCart([...cart, { ...product, qty: 1 }]);
+    if (existing) {
+      setCart(cart.map(i => i.id === product.id ? { ...i, qty: i.qty + 1 } : i));
+    } else {
+      setCart([...cart, { ...product, qty: 1 }]);
+    }
+    
+    if(!selectedCartItems.includes(product.id)){
+      setSelectedCartItems([...selectedCartItems, product.id]);
+    }
     
     showToast(`${product.name} added to cart!`);
     if(openDrawer) setIsCartOpen(true);
@@ -129,8 +145,8 @@ export default function Website() {
       {/* Toast Notification */}
       {toast && (
         <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 animate-slideInDown">
-          <div className="bg-white/10 backdrop-blur-xl border border-white/20 text-white px-5 py-3 rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.8)] flex items-center gap-2 font-bold text-sm">
-            <CheckCircle size={16} className="text-orange-500"/> {toast}
+          <div className="bg-[#121212] border border-zinc-700 text-white px-5 py-3 rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.8)] flex items-center gap-2 font-bold text-sm">
+            <CheckCircle size={18} className="text-orange-500"/> {toast}
           </div>
         </div>
       )}
@@ -139,7 +155,7 @@ export default function Website() {
       <header className="sticky top-0 z-40 bg-[#0a0a0a]/80 backdrop-blur-xl border-b border-zinc-800/80">
         <div className="max-w-md mx-auto px-5 py-4 flex items-center justify-between">
           {view !== 'home' ? (
-            <button onClick={() => setView('home')} className="p-2.5 bg-zinc-900 rounded-full hover:bg-zinc-800 active:scale-90 transition border border-zinc-800"><ChevronLeft size={20} className="text-zinc-300"/></button>
+            <button onClick={() => setView('home')} className="p-2 bg-zinc-900 rounded-full hover:bg-zinc-800 active:scale-90 transition border border-zinc-800"><ChevronLeft size={20} className="text-zinc-300"/></button>
           ) : (
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 bg-orange-500 rounded-xl flex items-center justify-center text-black font-black text-lg shadow-[0_0_15px_rgba(249,115,22,0.4)]">R</div>
@@ -160,9 +176,10 @@ export default function Website() {
       </header>
 
       <main className="max-w-md mx-auto">
+        
+        {/* VIEW: HOME */}
         {view === 'home' && (
           <div className="animate-fadeIn">
-            {/* Dark Search Bar */}
             <div className="px-5 pt-5 pb-3">
                <div className="relative">
                  <input id="searchInput" className="w-full bg-zinc-900/60 border border-zinc-800 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white placeholder-zinc-500 outline-none focus:border-orange-500/50 focus:bg-zinc-900 transition-all shadow-inner" placeholder="Search premium gadgets..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
@@ -170,7 +187,6 @@ export default function Website() {
                </div>
             </div>
 
-            {/* Premium Dark Hero Banner */}
             {!searchTerm && (
               <div className="px-5 py-2">
                 <div className="bg-zinc-900 rounded-[2rem] p-6 text-white relative overflow-hidden border border-zinc-800 shadow-[0_10px_30px_rgba(0,0,0,0.5)] h-48 flex flex-col justify-center">
@@ -185,9 +201,7 @@ export default function Website() {
               </div>
             )}
 
-            {/* Filter & Sort Bar */}
             <div className="px-5 py-4 flex items-center justify-between gap-2 sticky top-[72px] z-30 bg-[#0a0a0a]/90 backdrop-blur-md">
-               {/* Category Chips */}
                <div className="flex gap-2 overflow-x-auto scrollbar-hide flex-1 pr-4">
                  {categories.map(cat => (
                    <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${activeCategory === cat ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white'}`}>
@@ -195,8 +209,6 @@ export default function Website() {
                    </button>
                  ))}
                </div>
-               
-               {/* Sort Dropdown */}
                <div className="relative shrink-0">
                  <select className="appearance-none bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-bold py-2 pl-3 pr-8 rounded-xl outline-none focus:border-orange-500" value={sortBy} onChange={(e)=>setSortBy(e.target.value)}>
                    <option value="default">Sort By</option>
@@ -248,12 +260,12 @@ export default function Website() {
           </div>
         )}
         
-        {/* Dark Product Details */}
+        {/* VIEW: DETAILS */}
         {view === 'details' && selectedProduct && (
           <div className="animate-slideInRight bg-[#0a0a0a] min-h-screen">
             <div className="relative bg-[#121212] border-b border-zinc-800 rounded-b-[3rem] shadow-2xl">
                <div className="absolute top-4 right-4 flex gap-2 z-10">
-                 <button onClick={() => { navigator.clipboard.writeText(`${window.location.href} - Checkout ${selectedProduct.name} at ${config.shopName}`); showToast("Link copied!"); }} className="w-10 h-10 bg-[#0a0a0a]/80 backdrop-blur-md rounded-full flex items-center justify-center border border-zinc-700 text-white active:scale-90"><Share2 size={16}/></button>
+                 <button onClick={() => { navigator.clipboard.writeText(`${window.location.href}`); showToast("Product link copied!"); }} className="w-10 h-10 bg-[#0a0a0a]/80 backdrop-blur-md rounded-full flex items-center justify-center border border-zinc-700 text-white active:scale-90"><Share2 size={16}/></button>
                  <button onClick={() => toggleWishlist(selectedProduct)} className="w-10 h-10 bg-[#0a0a0a]/80 backdrop-blur-md rounded-full flex items-center justify-center border border-zinc-700 active:scale-90"><Heart size={16} fill={wishlist.some(i => i.id === selectedProduct.id) ? "#f97316" : "none"} className={wishlist.some(i => i.id === selectedProduct.id) ? "text-orange-500" : "text-zinc-300"}/></button>
                </div>
                <div className="w-full aspect-[4/3] overflow-hidden relative flex items-center justify-center p-12">
@@ -285,10 +297,9 @@ export default function Website() {
                 </div>
               </div>
 
-              {/* Related Products */}
               {relatedProducts.length > 0 && (
                 <div className="border-t border-zinc-800 pt-8 pb-10">
-                  <h3 className="font-black text-lg mb-4 text-white">You may also like</h3>
+                  <h3 className="font-black text-lg mb-4 text-white">Related Products</h3>
                   <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
                     {relatedProducts.map(rp => (
                       <div key={rp.id} onClick={() => { setSelectedProduct(rp); window.scrollTo(0,0); }} className="min-w-[140px] bg-[#121212] rounded-2xl p-3 border border-zinc-800 shrink-0 cursor-pointer active:scale-95 transition">
@@ -311,6 +322,39 @@ export default function Website() {
           </div>
         )}
         
+        {/* VIEW: WISHLIST (FIXED) */}
+        {view === 'wishlist' && (
+           <div className="animate-fadeIn pt-6 px-5 pb-20">
+             <h2 className="font-black text-2xl mb-6 text-white flex items-center gap-2"><Heart className="text-orange-500"/> My Wishlist</h2>
+             {wishlist.length === 0 ? (
+                <div className="text-center py-24 bg-[#121212] rounded-[2rem] border border-dashed border-zinc-800 shadow-inner">
+                  <div className="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mx-auto mb-4 border border-zinc-800"><Heart size={32} className="text-zinc-600"/></div>
+                  <p className="font-medium text-zinc-500">Your wishlist is empty.</p>
+                  <button onClick={()=>setView('home')} className="mt-4 px-6 py-2 bg-zinc-800 text-white rounded-full text-sm font-bold hover:bg-zinc-700 transition">Browse Products</button>
+                </div>
+             ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  {wishlist.map(product => (
+                    <div key={product.id} className="bg-[#121212] rounded-3xl p-3 border border-zinc-800 relative flex flex-col h-full">
+                      <button onClick={() => toggleWishlist(product)} className="absolute top-3 right-3 z-20 w-8 h-8 bg-zinc-900/80 rounded-full flex items-center justify-center border border-zinc-700 active:scale-90 transition"><Trash2 size={14} className="text-red-500" /></button>
+                      <div onClick={() => { setSelectedProduct(product); setView('details'); window.scrollTo(0,0); }} className="aspect-square bg-zinc-900 rounded-2xl mb-3 overflow-hidden p-3 flex items-center justify-center">
+                        <img src={product.images?.[0] || 'https://via.placeholder.com/300'} className="w-full h-full object-contain drop-shadow-lg" />
+                      </div>
+                      <div className="flex-1 flex flex-col justify-between px-1">
+                        <h3 className="font-bold text-zinc-200 text-sm line-clamp-2 leading-snug mb-3">{product.name}</h3>
+                        <div className="flex items-center justify-between">
+                          <span className="text-base font-black text-white">{config.currency || '৳'}{product.price}</span>
+                          <button onClick={() => addToCart(product, false)} className="w-8 h-8 bg-orange-500 text-black rounded-full flex items-center justify-center active:scale-90 transition shadow-lg"><ShoppingCart size={14}/></button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+             )}
+           </div>
+        )}
+
+        {/* VIEW: ACCOUNT */}
         {view === 'account' && <AccountView user={user} setUser={setUser} showToast={showToast} />}
       </main>
 
@@ -326,13 +370,18 @@ export default function Website() {
               {cart.length > 0 && <span className="absolute top-0 right-0 w-3.5 h-3.5 bg-white rounded-full border-2 border-orange-500"></span>}
             </div>
             
-            <button onClick={()=>setView('home')} className={`flex-1 flex flex-col items-center justify-center h-12 rounded-full transition-all text-zinc-500 hover:text-zinc-300`}><Heart size={20}/></button>
+            <button onClick={()=>setView('wishlist')} className={`flex-1 flex flex-col items-center justify-center h-12 rounded-full transition-all ${view==='wishlist'?'text-white bg-zinc-800':'text-zinc-500 hover:text-zinc-300'}`}>
+              <div className="relative">
+                 <Heart size={20}/>
+                 {wishlist.length > 0 && <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>}
+              </div>
+            </button>
             <button onClick={()=>setView('account')} className={`flex-1 flex flex-col items-center justify-center h-12 rounded-full transition-all ${view==='account'?'text-white bg-zinc-800':'text-zinc-500 hover:text-zinc-300'}`}><User size={20}/></button>
           </div>
         </div>
       )}
 
-      {isCartOpen && <CartDrawer cart={cart} setCart={setCart} onClose={() => setIsCartOpen(false)} user={user} config={config} db={db} setView={setView} showToast={showToast} />}
+      {isCartOpen && <CartDrawer cart={cart} setCart={setCart} selectedItems={selectedCartItems} setSelectedItems={setSelectedCartItems} onClose={() => setIsCartOpen(false)} user={user} config={config} db={db} setView={setView} showToast={showToast} />}
     </div>
   );
 }
@@ -354,7 +403,7 @@ function AccountView({ user, setUser, showToast }) {
 
   if (isEditing) {
     return (
-      <div className="px-4 pt-2 pb-32 animate-fadeIn">
+      <div className="px-4 pt-4 pb-32 animate-fadeIn">
         <div className="bg-[#121212] p-6 rounded-[2rem] shadow-2xl border border-zinc-800/80 max-w-md mx-auto relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-bl-full pointer-events-none"></div>
           <h2 className="font-black text-2xl mb-6 text-white flex items-center gap-2"><Map className="text-orange-500"/> Delivery Details</h2>
@@ -443,29 +492,72 @@ function AccountView({ user, setUser, showToast }) {
   );
 }
 
-// --- Dark Cart Drawer ---
-function CartDrawer({ cart, setCart, onClose, user, config, db, setView, showToast }) {
+// --- Daraz Style Cart Drawer with Item Selection ---
+function CartDrawer({ cart, setCart, selectedItems, setSelectedItems, onClose, user, config, db, setView, showToast }) {
   const [loading, setLoading] = useState(false);
   
-  const subtotal = cart.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.qty) || 1)), 0);
-  const delivery = Number(config.deliveryCharge) || 0;
+  // Calculate total ONLY for SELECTED items
+  const selectedCartObjects = cart.filter(item => selectedItems.includes(item.id));
+  
+  const subtotal = selectedCartObjects.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.qty) || 1)), 0);
+  const delivery = selectedCartObjects.length > 0 ? (Number(config.deliveryCharge) || 0) : 0;
   const total = subtotal + delivery;
 
+  const isAllSelected = cart.length > 0 && selectedItems.length === cart.length;
+
+  const toggleAll = () => {
+    if(isAllSelected) setSelectedItems([]);
+    else setSelectedItems(cart.map(i => i.id));
+  };
+
+  const toggleItem = (id) => {
+    if(selectedItems.includes(id)) setSelectedItems(selectedItems.filter(i => i !== id));
+    else setSelectedItems([...selectedItems, id]);
+  };
+
+  const handleDeleteItem = (id) => {
+    setCart(cart.filter(i => i.id !== id));
+    setSelectedItems(selectedItems.filter(i => i !== id));
+    showToast("Removed from cart");
+  };
+
   const handleCheckout = async () => {
-    if(!user) { showToast("Save your delivery info first!"); onClose(); setView('account'); return; }
+    if(selectedCartObjects.length === 0) {
+      return showToast("Please select items to buy.");
+    }
+    if(!user) { 
+      showToast("Save your delivery info first!"); 
+      onClose(); 
+      setView('account'); 
+      return; 
+    }
+    
     setLoading(true);
     try {
-      const orderData = { customer: user.name, phone: user.phone, address: `${user.address}, ${user.district}, ${user.division}`, items: cart, total: total, status: 'Pending', type: user.deliveryType || 'Home Del.', date: new Date().toLocaleString() };
+      const orderData = { 
+        customer: user.name, 
+        phone: user.phone, 
+        address: `${user.address}, ${user.district}, ${user.division}`, 
+        items: selectedCartObjects, 
+        total: total, 
+        status: 'Pending', 
+        type: user.deliveryType || 'Home Del.', 
+        date: new Date().toLocaleString() 
+      };
       await addDoc(collection(db, "orders"), orderData);
 
       let msg = `*New Order from Website* 🚀\n\n*Name:* ${user.name}\n*Phone:* ${user.phone}\n*Type:* ${user.deliveryType || 'Home Del.'}\n*Address:* ${user.address}, ${user.district}, ${user.division}\n\n`;
-      cart.forEach(item => { msg += `▪ ${item.qty}x ${item.name} (৳${item.price * item.qty})\n`; });
+      selectedCartObjects.forEach(item => { msg += `▪ ${item.qty}x ${item.name} (৳${item.price * item.qty})\n`; });
       msg += `\nSubtotal: ৳${subtotal}\nDelivery: ৳${delivery}\n*Total Bill: ৳${total}*`;
 
       const whatsappNum = config.whatsapp || "8801700000000";
       const waUrl = `https://wa.me/${whatsappNum}?text=${encodeURIComponent(msg)}`;
 
-      setCart([]); onClose();
+      // Only remove checked out items from the cart
+      setCart(cart.filter(item => !selectedItems.includes(item.id)));
+      setSelectedItems([]);
+      onClose();
+      
       window.open(waUrl, '_blank');
     } catch (e) { showToast("Error placing order."); }
     setLoading(false);
@@ -476,12 +568,19 @@ function CartDrawer({ cart, setCart, onClose, user, config, db, setView, showToa
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose}></div>
       <div className="relative w-full max-w-md bg-[#0a0a0a] h-full flex flex-col animate-slideInRight shadow-2xl border-l border-zinc-800">
         
-        <div className="bg-[#121212] px-6 py-5 flex justify-between items-center z-10 border-b border-zinc-800">
-          <h3 className="font-black text-xl text-white flex items-center gap-2"><ShoppingCart size={20}/> Your Cart <span className="text-zinc-500 font-medium text-sm">({cart.length})</span></h3>
-          <button onClick={onClose} className="w-10 h-10 bg-zinc-900 rounded-full flex items-center justify-center hover:bg-zinc-800 border border-zinc-800 transition active:scale-90"><X size={18} className="text-zinc-400"/></button>
+        <div className="bg-[#121212] px-5 py-4 flex justify-between items-center z-10 border-b border-zinc-800">
+          <div className="flex items-center gap-3">
+             {cart.length > 0 && (
+               <button onClick={toggleAll} className="text-zinc-400 hover:text-white transition">
+                 {isAllSelected ? <CheckSquare size={20} className="text-orange-500"/> : <Square size={20}/>}
+               </button>
+             )}
+             <h3 className="font-black text-lg text-white">Cart <span className="text-zinc-500 font-medium text-sm">({cart.length})</span></h3>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 bg-zinc-900 rounded-full flex items-center justify-center hover:bg-zinc-800 border border-zinc-800 transition active:scale-90"><X size={16} className="text-zinc-400"/></button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {cart.length === 0 ? (
              <div className="flex flex-col items-center justify-center h-full text-zinc-600 space-y-5">
                <div className="w-24 h-24 bg-zinc-900 rounded-full flex items-center justify-center border border-zinc-800 shadow-inner"><ShoppingCart size={32} className="text-zinc-600"/></div>
@@ -490,23 +589,33 @@ function CartDrawer({ cart, setCart, onClose, user, config, db, setView, showToa
              </div>
           ) : (
             <>
-              {cart.map(item => (
-                <div key={item.id} className="bg-[#121212] p-3 rounded-2xl border border-zinc-800 flex gap-4 relative pr-10 shadow-sm">
-                  <div className="w-20 h-20 bg-zinc-900 rounded-xl overflow-hidden flex items-center justify-center p-2"><img src={item.images[0]} className="w-full h-full object-contain drop-shadow-md"/></div>
-                  <div className="flex-1 flex flex-col justify-center py-1">
-                    <h4 className="font-bold text-sm text-zinc-200 line-clamp-2 leading-snug mb-2">{item.name}</h4>
-                    <div className="flex justify-between items-end mt-auto">
-                      <p className="text-orange-500 font-black">{config.currency || '৳'}{item.price}</p>
-                      <div className="flex gap-4 items-center bg-zinc-900 rounded-lg px-2 py-1 w-max border border-zinc-800">
-                        <button className="text-zinc-400 font-bold text-lg px-2 active:scale-90" onClick={()=>setCart(cart.map(i=>i.id===item.id?{...i,qty:Math.max(1,i.qty-1)}:i))}>-</button>
-                        <span className="text-sm font-black w-4 text-center text-white">{item.qty}</span>
-                        <button className="text-zinc-400 font-bold text-lg px-2 active:scale-90" onClick={()=>setCart(cart.map(i=>i.id===item.id?{...i,qty:i.qty+1}:i))}>+</button>
+              {cart.map(item => {
+                const isSelected = selectedItems.includes(item.id);
+                return (
+                  <div key={item.id} className={`bg-[#121212] p-3 rounded-2xl border flex gap-3 relative pr-10 transition-colors ${isSelected ? 'border-orange-500/50 bg-orange-500/5' : 'border-zinc-800'}`}>
+                    
+                    {/* Item Checkbox */}
+                    <div className="flex items-center justify-center pl-1 cursor-pointer" onClick={() => toggleItem(item.id)}>
+                       {isSelected ? <CheckSquare size={20} className="text-orange-500"/> : <Square size={20} className="text-zinc-600"/>}
+                    </div>
+
+                    <div className="w-20 h-20 bg-zinc-900 rounded-xl overflow-hidden flex items-center justify-center p-2"><img src={item.images[0]} className="w-full h-full object-contain drop-shadow-md"/></div>
+                    
+                    <div className="flex-1 flex flex-col justify-center py-1">
+                      <h4 className="font-bold text-sm text-zinc-200 line-clamp-2 leading-snug mb-2 pr-2" onClick={() => toggleItem(item.id)}>{item.name}</h4>
+                      <div className="flex justify-between items-end mt-auto">
+                        <p className="text-orange-500 font-black">{config.currency || '৳'}{item.price}</p>
+                        <div className="flex gap-4 items-center bg-zinc-900 rounded-lg px-2 py-1 w-max border border-zinc-800">
+                          <button className="text-zinc-400 font-bold text-lg px-1 active:scale-90" onClick={()=>setCart(cart.map(i=>i.id===item.id?{...i,qty:Math.max(1,i.qty-1)}:i))}>-</button>
+                          <span className="text-sm font-black w-4 text-center text-white">{item.qty}</span>
+                          <button className="text-zinc-400 font-bold text-lg px-1 active:scale-90" onClick={()=>setCart(cart.map(i=>i.id===item.id?{...i,qty:i.qty+1}:i))}>+</button>
+                        </div>
                       </div>
                     </div>
+                    <button onClick={()=>handleDeleteItem(item.id)} className="absolute top-3 right-3 p-1.5 text-zinc-600 hover:text-red-500 transition bg-zinc-900 rounded-lg"><Trash2 size={14}/></button>
                   </div>
-                  <button onClick={()=>{setCart(cart.filter(i=>i.id!==item.id)); showToast("Removed from cart");}} className="absolute top-4 right-4 text-zinc-600 hover:text-red-500 transition"><Trash2 size={16}/></button>
-                </div>
-              ))}
+                )
+              })}
 
               {user ? (
                 <div className="bg-[#121212] p-5 rounded-2xl border border-zinc-800 mt-6 shadow-sm relative overflow-hidden">
@@ -527,16 +636,20 @@ function CartDrawer({ cart, setCart, onClose, user, config, db, setView, showToa
         </div>
 
         {cart.length > 0 && (
-          <div className="p-6 bg-[#121212] border-t border-zinc-800 z-10 rounded-tl-3xl shadow-[0_-10px_40px_rgba(0,0,0,1)]">
-            <div className="space-y-3 mb-5 text-sm font-bold text-zinc-400">
-              <div className="flex justify-between"><span>Subtotal</span><span className="text-white">{config.currency || '৳'}{subtotal}</span></div>
-              <div className="flex justify-between"><span>Delivery</span><span className="text-white">{config.currency || '৳'}{delivery}</span></div>
+          <div className="p-5 bg-[#121212] border-t border-zinc-800 z-10 rounded-tl-3xl shadow-[0_-10px_40px_rgba(0,0,0,1)]">
+            <div className="space-y-2.5 mb-4 text-sm font-bold text-zinc-400">
+              <div className="flex justify-between"><span>Selected Items ({selectedCartObjects.reduce((a,b)=>a+b.qty,0)})</span><span className="text-white">{config.currency || '৳'}{subtotal}</span></div>
+              <div className="flex justify-between"><span>Delivery Fee</span><span className="text-white">{selectedCartObjects.length > 0 ? `${config.currency || '৳'}${delivery}` : '৳0'}</span></div>
             </div>
-            <div className="flex justify-between mb-6 font-black text-2xl text-white border-t border-dashed border-zinc-800 pt-4">
-              <span>Total Bill</span><span className="text-orange-500">{config.currency || '৳'}{total}</span>
+            <div className="flex justify-between mb-5 font-black text-xl text-white border-t border-dashed border-zinc-800 pt-3">
+              <span>Grand Total</span><span className="text-orange-500">{config.currency || '৳'}{total}</span>
             </div>
-            <button onClick={handleCheckout} disabled={loading} className="w-full bg-white text-black py-4 rounded-2xl font-black text-lg shadow-[0_0_20px_rgba(255,255,255,0.1)] active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-70">
-              {loading ? 'Processing...' : <><CreditCard size={20}/> Confirm Order</>}
+            <button 
+               onClick={handleCheckout} 
+               disabled={loading || selectedCartObjects.length === 0} 
+               className="w-full bg-white text-black py-4 rounded-2xl font-black text-lg shadow-[0_0_20px_rgba(255,255,255,0.1)] active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Processing...' : <><CreditCard size={20}/> Checkout ({selectedCartObjects.length})</>}
             </button>
           </div>
         )}
