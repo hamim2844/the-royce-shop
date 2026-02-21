@@ -9,7 +9,7 @@ import {
   ArrowRight, ShieldCheck, Map, CreditCard, ChevronDown, Share2, ArrowDownUp, CheckSquare, Square
 } from 'lucide-react';
 
-// --- Firebase Setup ---
+// --- Sifaa Firebase (Firebase Setup) ---
 const firebaseConfig = {
   apiKey: "AIzaSyDAQc-aLbQ_GPyuAU4hHmy8CIjLdNHVDtM",
   authDomain: "theroyce-d0527.firebaseapp.com",
@@ -22,7 +22,7 @@ const firebaseConfig = {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 
-// --- ALL 64 DISTRICTS OF BANGLADESH ---
+// --- Diiwaanuji leydi (ALL 64 DISTRICTS OF BANGLADESH) ---
 const BD_LOCATIONS = {
   "Dhaka": ["Dhaka", "Faridpur", "Gazipur", "Gopalganj", "Kishoreganj", "Madaripur", "Manikganj", "Munshiganj", "Narayanganj", "Narsingdi", "Rajbari", "Shariatpur", "Tangail"],
   "Chattogram": ["Bandarban", "Brahmanbaria", "Chandpur", "Chattogram", "Comilla", "Cox's Bazar", "Feni", "Khagrachari", "Lakshmipur", "Noakhali", "Rangamati"],
@@ -35,22 +35,22 @@ const BD_LOCATIONS = {
 };
 
 export default function Website() {
-  const [view, setView] = useState('home'); // home, details, wishlist, account
+  const [view, setView] = useState('home'); 
   const [selectedProduct, setSelectedProduct] = useState(null);
   
   const [cart, setCart] = useState([]);
-  const [selectedCartItems, setSelectedCartItems] = useState([]); // Stores IDs of selected items
+  const [selectedCartItems, setSelectedCartItems] = useState([]); 
   const [wishlist, setWishlist] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [user, setUser] = useState(null);
   
-  // App States
+  // --- Hubbirde (App States) ---
   const [searchTerm, setSearchTerm] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
   const [sortBy, setSortBy] = useState("default");
   const [toast, setToast] = useState(null); 
   
-  // DB States
+  // --- Dataaji (DB States) ---
   const [products, setProducts] = useState([]);
   const [config, setConfig] = useState({ 
     shopName: "THE ROYCE", currency: "৳", deliveryCharge: 130, 
@@ -60,7 +60,7 @@ export default function Website() {
   });
   const [loadingProducts, setLoadingProducts] = useState(true);
 
-  // --- Custom Toast Notification ---
+  // --- Hollu Kabaaru (Custom Toast Notification) ---
   const showToast = (message) => {
     setToast(message);
     setTimeout(() => setToast(null), 3000);
@@ -92,7 +92,6 @@ export default function Website() {
       localStorage.setItem('royce_wishlist', JSON.stringify(wishlist));
       if(user) localStorage.setItem('royce_user', JSON.stringify(user));
     }
-    // Auto-select newly added items to cart
     if(cart.length > 0) {
        const unselectedNewItems = cart.filter(c => !selectedCartItems.includes(c.id)).map(c => c.id);
        if(unselectedNewItems.length > 0) {
@@ -128,7 +127,7 @@ export default function Website() {
     }
   };
 
-  // Processing Products (Search, Filter, Sort)
+  // --- Topaade Marsi (Processing Products) ---
   const categories = ["All", ...new Set(products.map(p => p.category).filter(Boolean))];
   
   let displayedProducts = [...products];
@@ -142,7 +141,7 @@ export default function Website() {
   return (
     <div className="font-sans text-white bg-[#0a0a0a] min-h-screen pb-24 selection:bg-orange-500 selection:text-white relative">
       
-      {/* Toast Notification */}
+      {/* --- Kabaaru (Toast) --- */}
       {toast && (
         <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 animate-slideInDown">
           <div className="bg-[#121212] border border-zinc-700 text-white px-5 py-3 rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.8)] flex items-center gap-2 font-bold text-sm">
@@ -151,11 +150,11 @@ export default function Website() {
         </div>
       )}
 
-      {/* Dark Glassmorphism Header */}
+      {/* --- Hoore (Header) --- */}
       <header className="sticky top-0 z-40 bg-[#0a0a0a]/80 backdrop-blur-xl border-b border-zinc-800/80">
         <div className="max-w-md mx-auto px-5 py-4 flex items-center justify-between">
           {view !== 'home' ? (
-            <button onClick={() => setView('home')} className="p-2 bg-zinc-900 rounded-full hover:bg-zinc-800 active:scale-90 transition border border-zinc-800"><ChevronLeft size={20} className="text-zinc-300"/></button>
+            <button onClick={() => setView('home')} className="p-2.5 bg-zinc-900 rounded-full hover:bg-zinc-800 active:scale-90 transition border border-zinc-800"><ChevronLeft size={20} className="text-zinc-300"/></button>
           ) : (
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 bg-orange-500 rounded-xl flex items-center justify-center text-black font-black text-lg shadow-[0_0_15px_rgba(249,115,22,0.4)]">R</div>
@@ -177,7 +176,7 @@ export default function Website() {
 
       <main className="max-w-md mx-auto">
         
-        {/* VIEW: HOME */}
+        {/* --- Yiyngo Galle (HOME VIEW) --- */}
         {view === 'home' && (
           <div className="animate-fadeIn">
             <div className="px-5 pt-5 pb-3">
@@ -260,7 +259,7 @@ export default function Website() {
           </div>
         )}
         
-        {/* VIEW: DETAILS */}
+        {/* --- Yiyngo Coodgu (DETAILS VIEW) --- */}
         {view === 'details' && selectedProduct && (
           <div className="animate-slideInRight bg-[#0a0a0a] min-h-screen">
             <div className="relative bg-[#121212] border-b border-zinc-800 rounded-b-[3rem] shadow-2xl">
@@ -322,7 +321,7 @@ export default function Website() {
           </div>
         )}
         
-        {/* VIEW: WISHLIST (FIXED) */}
+        {/* --- Yiyngo Yiɗ-ɗi (WISHLIST VIEW) --- */}
         {view === 'wishlist' && (
            <div className="animate-fadeIn pt-6 px-5 pb-20">
              <h2 className="font-black text-2xl mb-6 text-white flex items-center gap-2"><Heart className="text-orange-500"/> My Wishlist</h2>
@@ -354,11 +353,11 @@ export default function Website() {
            </div>
         )}
 
-        {/* VIEW: ACCOUNT */}
+        {/* --- Yiyngo Konto (ACCOUNT VIEW) --- */}
         {view === 'account' && <AccountView user={user} setUser={setUser} showToast={showToast} />}
       </main>
 
-      {/* Dark Floating App Bottom Navigation */}
+      {/* --- Cakkirde Dow (Bottom Navigation) --- */}
       {view !== 'details' && (
         <div className="fixed bottom-6 left-4 right-4 z-30 md:hidden">
           <div className="bg-[#121212]/95 backdrop-blur-xl rounded-full p-2 flex justify-between items-center shadow-[0_10px_40px_rgba(0,0,0,0.8)] max-w-sm mx-auto border border-zinc-800 relative">
@@ -373,7 +372,7 @@ export default function Website() {
             <button onClick={()=>setView('wishlist')} className={`flex-1 flex flex-col items-center justify-center h-12 rounded-full transition-all ${view==='wishlist'?'text-white bg-zinc-800':'text-zinc-500 hover:text-zinc-300'}`}>
               <div className="relative">
                  <Heart size={20}/>
-                 {wishlist.length > 0 && <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>}
+                 {wishlist.length > 0 && <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-[#121212]"></span>}
               </div>
             </button>
             <button onClick={()=>setView('account')} className={`flex-1 flex flex-col items-center justify-center h-12 rounded-full transition-all ${view==='account'?'text-white bg-zinc-800':'text-zinc-500 hover:text-zinc-300'}`}><User size={20}/></button>
@@ -381,12 +380,13 @@ export default function Website() {
         </div>
       )}
 
+      {/* --- Soodu (Cart Drawer) --- */}
       {isCartOpen && <CartDrawer cart={cart} setCart={setCart} selectedItems={selectedCartItems} setSelectedItems={setSelectedCartItems} onClose={() => setIsCartOpen(false)} user={user} config={config} db={db} setView={setView} showToast={showToast} />}
     </div>
   );
 }
 
-// --- Ultra Premium Dark Profile View ---
+// --- Yiyngo Konto Ɓurngo (Ultra Premium Dark Profile View) ---
 function AccountView({ user, setUser, showToast }) {
   const [isEditing, setIsEditing] = useState(!user);
   const [form, setForm] = useState(user || { deliveryType: 'Home Del.', phone: '', name: '', division: '', district: '', address: '' });
@@ -398,10 +398,11 @@ function AccountView({ user, setUser, showToast }) {
     showToast("Profile Saved Successfully!");
   };
 
+  // --- Kisndam ƴeewndo (Safe lookup to prevent crash) ---
   const divisions = Object.keys(BD_LOCATIONS);
-  const districts = form.division ? BD_LOCATIONS[form.division] : [];
+  const districts = (form.division && BD_LOCATIONS[form.division]) ? BD_LOCATIONS[form.division] : [];
 
-  if (isEditing) {
+  if (!user || isEditing) {
     return (
       <div className="px-4 pt-4 pb-32 animate-fadeIn">
         <div className="bg-[#121212] p-6 rounded-[2rem] shadow-2xl border border-zinc-800/80 max-w-md mx-auto relative overflow-hidden">
@@ -409,7 +410,6 @@ function AccountView({ user, setUser, showToast }) {
           <h2 className="font-black text-2xl mb-6 text-white flex items-center gap-2"><Map className="text-orange-500"/> Delivery Details</h2>
           
           <div className="space-y-5 relative z-10">
-            {/* Delivery Type */}
             <div>
               <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2 block ml-1">Delivery Method</label>
               <div className="flex gap-3 bg-zinc-900 p-1 rounded-2xl border border-zinc-800">
@@ -418,7 +418,6 @@ function AccountView({ user, setUser, showToast }) {
               </div>
             </div>
 
-            {/* Inputs */}
             <div className="relative">
                <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest absolute -top-2 left-4 bg-[#121212] px-1 z-10">Phone Number</label>
                <input type="tel" placeholder="017XXXXXXXX" className="w-full bg-transparent border border-zinc-700 p-4 rounded-2xl outline-none font-bold text-white placeholder-zinc-700 focus:border-orange-500 transition-colors relative z-0" value={form.phone} onChange={e=>setForm({...form, phone:e.target.value})}/>
@@ -434,7 +433,6 @@ function AccountView({ user, setUser, showToast }) {
                <textarea placeholder="House, Road, Area..." className="w-full bg-transparent border border-zinc-700 p-4 rounded-2xl outline-none font-medium text-white placeholder-zinc-700 focus:border-orange-500 transition-colors relative z-0" rows="3" value={form.address} onChange={e=>setForm({...form, address:e.target.value})}/>
             </div>
 
-            {/* Dropdowns */}
             <div className="p-4 bg-zinc-900 rounded-2xl border border-zinc-800 space-y-4">
                <div className="relative">
                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1 block ml-1">Division</label>
@@ -465,21 +463,22 @@ function AccountView({ user, setUser, showToast }) {
       </div>
     )
   }
+
   return (
     <div className="px-5 pt-4 space-y-4 animate-fadeIn max-w-md mx-auto">
       <div className="bg-[#121212] text-white p-8 rounded-[2rem] relative overflow-hidden border border-zinc-800 shadow-xl">
         <div className="absolute top-0 right-0 w-40 h-40 bg-orange-500/10 rounded-full blur-3xl pointer-events-none"></div>
         <div className="relative z-10">
           <div className="flex justify-between items-start mb-6">
-            <div className="w-16 h-16 bg-zinc-800 rounded-2xl flex items-center justify-center font-black text-3xl text-white border border-zinc-700 shadow-inner">{user.name.charAt(0)}</div>
-            <span className="bg-zinc-900 text-orange-500 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border border-zinc-800">{user.deliveryType || 'Home Del.'}</span>
+            <div className="w-16 h-16 bg-zinc-800 rounded-2xl flex items-center justify-center font-black text-3xl text-white border border-zinc-700 shadow-inner">{user?.name?.charAt(0) || 'U'}</div>
+            <span className="bg-zinc-900 text-orange-500 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border border-zinc-800">{user?.deliveryType || 'Home Del.'}</span>
           </div>
-          <h2 className="text-3xl font-black mb-1 text-white">{user.name}</h2>
-          <p className="text-zinc-400 font-medium flex items-center gap-2 mb-6 font-mono"><Phone size={16} className="text-zinc-500"/> {user.phone}</p>
+          <h2 className="text-3xl font-black mb-1 text-white">{user?.name || 'Unknown'}</h2>
+          <p className="text-zinc-400 font-medium flex items-center gap-2 mb-6 font-mono"><Phone size={16} className="text-zinc-500"/> {user?.phone || 'No phone'}</p>
           <div className="bg-[#0a0a0a] p-5 rounded-2xl border border-zinc-800/80">
              <p className="text-zinc-500 text-[10px] uppercase font-black tracking-widest flex items-center gap-1.5 mb-2"><MapPin size={12}/> Delivery Address</p>
-             <p className="font-bold leading-relaxed text-zinc-200">{user.address}</p>
-             <p className="text-sm font-medium text-zinc-400 mt-1">{user.district}, {user.division}</p>
+             <p className="font-bold leading-relaxed text-zinc-200">{user?.address || ''}</p>
+             <p className="text-sm font-medium text-zinc-400 mt-1">{user?.district || ''}, {user?.division || ''}</p>
           </div>
         </div>
       </div>
@@ -492,11 +491,10 @@ function AccountView({ user, setUser, showToast }) {
   );
 }
 
-// --- Daraz Style Cart Drawer with Item Selection ---
+// --- Drawer Coodgu (Daraz Style Cart Drawer) ---
 function CartDrawer({ cart, setCart, selectedItems, setSelectedItems, onClose, user, config, db, setView, showToast }) {
   const [loading, setLoading] = useState(false);
   
-  // Calculate total ONLY for SELECTED items
   const selectedCartObjects = cart.filter(item => selectedItems.includes(item.id));
   
   const subtotal = selectedCartObjects.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.qty) || 1)), 0);
@@ -553,7 +551,6 @@ function CartDrawer({ cart, setCart, selectedItems, setSelectedItems, onClose, u
       const whatsappNum = config.whatsapp || "8801700000000";
       const waUrl = `https://wa.me/${whatsappNum}?text=${encodeURIComponent(msg)}`;
 
-      // Only remove checked out items from the cart
       setCart(cart.filter(item => !selectedItems.includes(item.id)));
       setSelectedItems([]);
       onClose();
@@ -594,7 +591,6 @@ function CartDrawer({ cart, setCart, selectedItems, setSelectedItems, onClose, u
                 return (
                   <div key={item.id} className={`bg-[#121212] p-3 rounded-2xl border flex gap-3 relative pr-10 transition-colors ${isSelected ? 'border-orange-500/50 bg-orange-500/5' : 'border-zinc-800'}`}>
                     
-                    {/* Item Checkbox */}
                     <div className="flex items-center justify-center pl-1 cursor-pointer" onClick={() => toggleItem(item.id)}>
                        {isSelected ? <CheckSquare size={20} className="text-orange-500"/> : <Square size={20} className="text-zinc-600"/>}
                     </div>
@@ -621,9 +617,9 @@ function CartDrawer({ cart, setCart, selectedItems, setSelectedItems, onClose, u
                 <div className="bg-[#121212] p-5 rounded-2xl border border-zinc-800 mt-6 shadow-sm relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-20 h-20 bg-blue-500/5 rounded-bl-full pointer-events-none"></div>
                   <div className="flex justify-between items-center mb-3 relative z-10"><p className="text-[10px] uppercase font-black tracking-widest text-zinc-500 flex items-center gap-1"><MapPin size={12}/> Deliver To</p><span onClick={()=>{onClose(); setView('account')}} className="text-[10px] font-black uppercase tracking-wider text-orange-500 cursor-pointer bg-orange-500/10 border border-orange-500/20 px-2 py-1 rounded-md active:scale-95">Edit</span></div>
-                  <p className="font-black text-white relative z-10">{user.name}</p>
-                  <p className="text-xs font-bold text-zinc-400 font-mono mt-1 mb-2 relative z-10">{user.phone}</p>
-                  <p className="text-xs text-zinc-400 leading-relaxed font-medium bg-[#0a0a0a] p-3 rounded-xl border border-zinc-800/50 relative z-10">{user.address}, {user.district}</p>
+                  <p className="font-black text-white relative z-10">{user?.name || ''}</p>
+                  <p className="text-xs font-bold text-zinc-400 font-mono mt-1 mb-2 relative z-10">{user?.phone || ''}</p>
+                  <p className="text-xs text-zinc-400 leading-relaxed font-medium bg-[#0a0a0a] p-3 rounded-xl border border-zinc-800/50 relative z-10">{user?.address || ''}, {user?.district || ''}</p>
                 </div>
               ) : (
                 <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl text-center mt-6 shadow-inner">
