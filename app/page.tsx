@@ -2,14 +2,14 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, collection, onSnapshot, addDoc } from "firebase/firestore";
+import { getFirestore, collection, onSnapshot, addDoc, doc, setDoc } from "firebase/firestore";
 import { 
   ShoppingCart, X, Phone, MapPin, CheckCircle, Star, 
   ChevronLeft, Search, Home, Grid, User, Heart, Edit3, Trash2, 
   ArrowRight, ShieldCheck, Map, CreditCard, ChevronDown, Share2, ArrowDownUp, CheckSquare, Square
 } from 'lucide-react';
 
-// --- Sifaa Firebase (Firebase Setup) ---
+// --- Firebase Setup ---
 const firebaseConfig = {
   apiKey: "AIzaSyDAQc-aLbQ_GPyuAU4hHmy8CIjLdNHVDtM",
   authDomain: "theroyce-d0527.firebaseapp.com",
@@ -22,7 +22,7 @@ const firebaseConfig = {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 
-// --- Diiwaanuji leydi (ALL 64 DISTRICTS OF BANGLADESH) ---
+// --- ALL 64 DISTRICTS OF BANGLADESH ---
 const BD_LOCATIONS = {
   "Dhaka": ["Dhaka", "Faridpur", "Gazipur", "Gopalganj", "Kishoreganj", "Madaripur", "Manikganj", "Munshiganj", "Narayanganj", "Narsingdi", "Rajbari", "Shariatpur", "Tangail"],
   "Chattogram": ["Bandarban", "Brahmanbaria", "Chandpur", "Chattogram", "Comilla", "Cox's Bazar", "Feni", "Khagrachari", "Lakshmipur", "Noakhali", "Rangamati"],
@@ -35,38 +35,60 @@ const BD_LOCATIONS = {
 };
 
 export default function Website() {
+  // --- ANTI-CRASH GUARD (Next.js Hydration Fix) ---
+  const [mounted, setMounted] = useState(false);
+  const [uid, setUid] = useState(null); // Firebase Device User ID
+
   const [view, setView] = useState('home'); 
   const [selectedProduct, setSelectedProduct] = useState(null);
   
+  // User Data States (Now synced with Firebase)
   const [cart, setCart] = useState([]);
   const [selectedCartItems, setSelectedCartItems] = useState([]); 
   const [wishlist, setWishlist] = useState([]);
-  const [isCartOpen, setIsCartOpen] = useState(false);
   const [user, setUser] = useState(null);
+  const [isCartOpen, setIsCartOpen] = useState(false);
   
-  // --- Hubbirde (App States) ---
+  // App States
   const [searchTerm, setSearchTerm] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
   const [sortBy, setSortBy] = useState("default");
   const [toast, setToast] = useState(null); 
   
-  // --- Dataaji (DB States) ---
+  // Admin Config States
   const [products, setProducts] = useState([]);
   const [config, setConfig] = useState({ 
     shopName: "THE ROYCE", currency: "৳", deliveryCharge: 130, 
     heroTitle: "Premium Tech Drop", heroSubtitle: "Discover the latest innovations", heroBadge: "TRENDING",
-    heroImage: "https://images.unsplash.com/photo-1550009158-9ff169c66284?w=800",
     whatsapp: "8801700000000"
   });
   const [loadingProducts, setLoadingProducts] = useState(true);
 
-  // --- Hollu Kabaaru (Custom Toast Notification) ---
-  const showToast = (message) => {
-    setToast(message);
-    setTimeout(() => setToast(null), 3000);
-  };
-
+  // --- Initial Setup & Data Wiping ---
   useEffect(() => {
+    setMounted(true); // Tell Next.js we are ready to render client-side UI
+    
+    // Nuke old corrupted localStorage to fix previous crashes
+    if(typeof window !== 'undefined'){
+       localStorage.removeItem('royce_cart');
+       localStorage.removeItem('royce_wishlist');
+       localStorage.removeItem('royce_user');
+       
+       // Generate or get Unique Device ID for Firebase
+       let deviceId = localStorage.getItem('royce_device_uid');
+       if(!deviceId) {
+         deviceId = 'UID_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+         localStorage.setItem('royce_device_uid', deviceId);
+       }
+       setUid(deviceId);
+    }
+  }, []);
+
+  // --- Firebase Realtime Sync ---
+  useEffect(() => {
+    if(!mounted) return;
+
+    // Load Shop Products & Config
     const unsubProducts = onSnapshot(collection(db, "products"), (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoadingProducts(false);
@@ -75,61 +97,92 @@ export default function Website() {
       if(!snapshot.empty) setConfig(snapshot.docs[0].data());
     });
 
-    if (typeof window !== 'undefined') {
-      const savedCart = localStorage.getItem('royce_cart');
-      const savedUser = localStorage.getItem('royce_user');
-      const savedWishlist = localStorage.getItem('royce_wishlist');
-      if (savedCart) setCart(JSON.parse(savedCart));
-      if (savedUser) setUser(JSON.parse(savedUser));
-      if (savedWishlist) setWishlist(JSON.parse(savedWishlist));
-    }
     return () => { unsubProducts(); unsubConfig(); };
-  }, []);
+  }, [mounted]);
 
+  // Load User Data from Firebase Cloud
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('royce_cart', JSON.stringify(cart));
-      localStorage.setItem('royce_wishlist', JSON.stringify(wishlist));
-      if(user) localStorage.setItem('royce_user', JSON.stringify(user));
-    }
-    if(cart.length > 0) {
-       const unselectedNewItems = cart.filter(c => !selectedCartItems.includes(c.id)).map(c => c.id);
-       if(unselectedNewItems.length > 0) {
-         setSelectedCartItems([...selectedCartItems, ...unselectedNewItems]);
+    if(!uid) return;
+    const unsubUser = onSnapshot(doc(db, "customers", uid), (docSnap) => {
+       if(docSnap.exists()){
+         const data = docSnap.data();
+         setCart(data.cart || []);
+         setWishlist(data.wishlist || []);
+         setUser(data.profile || null);
        }
-    }
-  }, [cart, wishlist, user]);
+    });
+    return () => unsubUser();
+  }, [uid]);
 
+  // --- Push updates to Firebase Cloud ---
+  const updateCloudData = async (field, data) => {
+    if(!uid) return;
+    try {
+      await setDoc(doc(db, "customers", uid), { [field]: data }, { merge: true });
+    } catch(e) { console.error("Cloud sync error", e); }
+  };
+
+  const showToast = (message) => {
+    setToast(message);
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  // --- Actions ---
   const addToCart = (product, openDrawer = false) => {
-    const existing = cart.find(i => i.id === product.id);
-    if (existing) {
-      setCart(cart.map(i => i.id === product.id ? { ...i, qty: i.qty + 1 } : i));
+    let newCart = [...cart];
+    const existingIndex = newCart.findIndex(i => i.id === product.id);
+    if (existingIndex >= 0) {
+      newCart[existingIndex].qty += 1;
     } else {
-      setCart([...cart, { ...product, qty: 1 }]);
+      newCart.push({ ...product, qty: 1 });
     }
+    
+    setCart(newCart); // Optimistic UI update
+    updateCloudData('cart', newCart); // Save to Firebase
     
     if(!selectedCartItems.includes(product.id)){
       setSelectedCartItems([...selectedCartItems, product.id]);
     }
-    
     showToast(`${product.name} added to cart!`);
     if(openDrawer) setIsCartOpen(true);
   };
 
-  const toggleWishlist = (product) => {
-    const exists = wishlist.find(i => i.id === product.id);
-    if (exists) {
-      setWishlist(wishlist.filter(i => i.id !== product.id));
-      showToast("Removed from Wishlist");
-    } else {
-      setWishlist([...wishlist, product]);
-      showToast("Added to Wishlist");
-    }
+  const updateCartQty = (id, newQty) => {
+    const newCart = cart.map(i => i.id === id ? { ...i, qty: newQty } : i);
+    setCart(newCart);
+    updateCloudData('cart', newCart);
   };
 
-  // --- Topaade Marsi (Processing Products) ---
+  const removeCartItem = (id) => {
+    const newCart = cart.filter(i => i.id !== id);
+    setCart(newCart);
+    updateCloudData('cart', newCart);
+    setSelectedCartItems(selectedCartItems.filter(i => i !== id));
+    showToast("Removed from cart");
+  };
+
+  const toggleWishlist = (product) => {
+    const exists = wishlist.find(i => i.id === product.id);
+    let newWishlist;
+    if (exists) {
+      newWishlist = wishlist.filter(i => i.id !== product.id);
+      showToast("Removed from Wishlist");
+    } else {
+      newWishlist = [...wishlist, product];
+      showToast("Added to Wishlist");
+    }
+    setWishlist(newWishlist);
+    updateCloudData('wishlist', newWishlist);
+  };
+
+  const saveUserProfile = (profileData) => {
+    setUser(profileData);
+    updateCloudData('profile', profileData);
+    showToast("Profile Saved to Cloud!");
+  };
+
+  // --- Processing Products ---
   const categories = ["All", ...new Set(products.map(p => p.category).filter(Boolean))];
-  
   let displayedProducts = [...products];
   if (searchTerm) displayedProducts = displayedProducts.filter(p => p.name?.toLowerCase().includes(searchTerm.toLowerCase()));
   if (activeCategory !== "All") displayedProducts = displayedProducts.filter(p => p.category === activeCategory);
@@ -138,10 +191,14 @@ export default function Website() {
 
   const relatedProducts = selectedProduct ? products.filter(p => p.category === selectedProduct.category && p.id !== selectedProduct.id).slice(0,4) : [];
 
+  // --- PREVENT HYDRATION CRASH ---
+  if (!mounted) {
+    return <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center text-zinc-500"><div className="w-10 h-10 border-4 border-zinc-800 border-t-orange-500 rounded-full animate-spin mb-4"></div><p className="font-bold tracking-widest text-xs uppercase">Loading Royce...</p></div>;
+  }
+
   return (
     <div className="font-sans text-white bg-[#0a0a0a] min-h-screen pb-24 selection:bg-orange-500 selection:text-white relative">
       
-      {/* --- Kabaaru (Toast) --- */}
       {toast && (
         <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 animate-slideInDown">
           <div className="bg-[#121212] border border-zinc-700 text-white px-5 py-3 rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.8)] flex items-center gap-2 font-bold text-sm">
@@ -150,7 +207,7 @@ export default function Website() {
         </div>
       )}
 
-      {/* --- Hoore (Header) --- */}
+      {/* Dark Glassmorphism Header */}
       <header className="sticky top-0 z-40 bg-[#0a0a0a]/80 backdrop-blur-xl border-b border-zinc-800/80">
         <div className="max-w-md mx-auto px-5 py-4 flex items-center justify-between">
           {view !== 'home' ? (
@@ -164,11 +221,11 @@ export default function Website() {
           
           <div className="flex items-center gap-4">
             {view === 'home' && (
-              <button onClick={() => document.getElementById('searchInput').focus()} className="text-zinc-400 hover:text-white transition active:scale-90"><Search size={22}/></button>
+              <button onClick={() => document.getElementById('searchInput')?.focus()} className="text-zinc-400 hover:text-white transition active:scale-90"><Search size={22}/></button>
             )}
             <button onClick={() => setIsCartOpen(true)} className="relative p-2 text-zinc-300 hover:text-white transition active:scale-90 bg-zinc-900 rounded-full border border-zinc-800">
               <ShoppingCart size={20} />
-              {cart.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-orange-500 text-black text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-black border-2 border-[#0a0a0a]">{cart.reduce((a,b)=>a+b.qty,0)}</span>}
+              {cart.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-orange-500 text-black text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-black border-2 border-[#0a0a0a]">{cart.reduce((a,b)=>a+(Number(b.qty)||1),0)}</span>}
             </button>
           </div>
         </div>
@@ -176,7 +233,7 @@ export default function Website() {
 
       <main className="max-w-md mx-auto">
         
-        {/* --- Yiyngo Galle (HOME VIEW) --- */}
+        {/* --- HOME VIEW --- */}
         {view === 'home' && (
           <div className="animate-fadeIn">
             <div className="px-5 pt-5 pb-3">
@@ -220,7 +277,7 @@ export default function Website() {
             
             <div className="px-5 pt-2">
               {loadingProducts ? (
-                <div className="flex flex-col items-center justify-center py-20 text-zinc-500"><div className="w-8 h-8 border-4 border-zinc-800 border-t-orange-500 rounded-full animate-spin mb-3"></div><p className="text-sm font-medium tracking-widest uppercase text-[10px]">Loading Catalog...</p></div>
+                <div className="flex flex-col items-center justify-center py-20 text-zinc-500"><div className="w-8 h-8 border-4 border-zinc-800 border-t-orange-500 rounded-full animate-spin mb-3"></div><p className="text-sm font-medium tracking-widest uppercase text-[10px]">Loading Cloud Data...</p></div>
               ) : displayedProducts.length === 0 ? (
                 <div className="text-center py-20 text-zinc-500 bg-zinc-900/30 rounded-[2rem] border border-dashed border-zinc-800"><Search size={40} className="mx-auto mb-3 opacity-20"/><p className="font-medium text-sm">No items found.</p></div>
               ) : (
@@ -259,7 +316,7 @@ export default function Website() {
           </div>
         )}
         
-        {/* --- Yiyngo Coodgu (DETAILS VIEW) --- */}
+        {/* --- DETAILS VIEW --- */}
         {view === 'details' && selectedProduct && (
           <div className="animate-slideInRight bg-[#0a0a0a] min-h-screen">
             <div className="relative bg-[#121212] border-b border-zinc-800 rounded-b-[3rem] shadow-2xl">
@@ -321,7 +378,7 @@ export default function Website() {
           </div>
         )}
         
-        {/* --- Yiyngo Yiɗ-ɗi (WISHLIST VIEW) --- */}
+        {/* --- WISHLIST VIEW --- */}
         {view === 'wishlist' && (
            <div className="animate-fadeIn pt-6 px-5 pb-20">
              <h2 className="font-black text-2xl mb-6 text-white flex items-center gap-2"><Heart className="text-orange-500"/> My Wishlist</h2>
@@ -353,11 +410,11 @@ export default function Website() {
            </div>
         )}
 
-        {/* --- Yiyngo Konto (ACCOUNT VIEW) --- */}
-        {view === 'account' && <AccountView user={user} setUser={setUser} showToast={showToast} />}
+        {/* --- ACCOUNT VIEW --- */}
+        {view === 'account' && <AccountView user={user} onSave={saveUserProfile} showToast={showToast} />}
       </main>
 
-      {/* --- Cakkirde Dow (Bottom Navigation) --- */}
+      {/* --- Bottom Navigation --- */}
       {view !== 'details' && (
         <div className="fixed bottom-6 left-4 right-4 z-30 md:hidden">
           <div className="bg-[#121212]/95 backdrop-blur-xl rounded-full p-2 flex justify-between items-center shadow-[0_10px_40px_rgba(0,0,0,0.8)] max-w-sm mx-auto border border-zinc-800 relative">
@@ -380,29 +437,50 @@ export default function Website() {
         </div>
       )}
 
-      {/* --- Soodu (Cart Drawer) --- */}
-      {isCartOpen && <CartDrawer cart={cart} setCart={setCart} selectedItems={selectedCartItems} setSelectedItems={setSelectedCartItems} onClose={() => setIsCartOpen(false)} user={user} config={config} db={db} setView={setView} showToast={showToast} />}
+      {/* --- Cart Drawer --- */}
+      {isCartOpen && <CartDrawer 
+          cart={cart} 
+          updateCartQty={updateCartQty} 
+          removeCartItem={removeCartItem} 
+          selectedItems={selectedCartItems} 
+          setSelectedItems={setSelectedCartItems} 
+          onClose={() => setIsCartOpen(false)} 
+          user={user} 
+          config={config} 
+          db={db} 
+          setView={setView} 
+          showToast={showToast} 
+          clearCartFromCloud={(newCart) => { setCart(newCart); updateCloudData('cart', newCart); }}
+      />}
     </div>
   );
 }
 
-// --- Yiyngo Konto Ɓurngo (Ultra Premium Dark Profile View) ---
-function AccountView({ user, setUser, showToast }) {
+// --- BUG-PROOF PROFILE COMPONENT ---
+function AccountView({ user, onSave, showToast }) {
   const [isEditing, setIsEditing] = useState(!user);
-  const [form, setForm] = useState(user || { deliveryType: 'Home Del.', phone: '', name: '', division: '', district: '', address: '' });
+  const [form, setForm] = useState({ 
+    deliveryType: user?.deliveryType || 'Home Del.', 
+    phone: user?.phone || '', 
+    name: user?.name || '', 
+    division: user?.division || '', 
+    district: user?.district || '', 
+    address: user?.address || '' 
+  });
 
   const handleSave = () => {
-    if(!form.name || !form.phone || !form.division || !form.district || !form.address) return showToast("Please fill all details!");
-    setUser(form); 
+    if(!form.name || !form.phone || !form.division || !form.district || !form.address) {
+       return showToast("Please fill all details!");
+    }
+    onSave(form); 
     setIsEditing(false);
-    showToast("Profile Saved Successfully!");
   };
 
-  // --- Kisndam ƴeewndo (Safe lookup to prevent crash) ---
   const divisions = Object.keys(BD_LOCATIONS);
-  const districts = (form.division && BD_LOCATIONS[form.division]) ? BD_LOCATIONS[form.division] : [];
+  // Safe array reading to prevent maps from crashing on old buggy data
+  const districts = (form.division && Array.isArray(BD_LOCATIONS[form.division])) ? BD_LOCATIONS[form.division] : [];
 
-  if (!user || isEditing) {
+  if (isEditing) {
     return (
       <div className="px-4 pt-4 pb-32 animate-fadeIn">
         <div className="bg-[#121212] p-6 rounded-[2rem] shadow-2xl border border-zinc-800/80 max-w-md mx-auto relative overflow-hidden">
@@ -464,16 +542,19 @@ function AccountView({ user, setUser, showToast }) {
     )
   }
 
+  // Fallback rendering defaults safely
+  const userNameChar = user?.name ? user.name.charAt(0) : 'U';
+
   return (
     <div className="px-5 pt-4 space-y-4 animate-fadeIn max-w-md mx-auto">
       <div className="bg-[#121212] text-white p-8 rounded-[2rem] relative overflow-hidden border border-zinc-800 shadow-xl">
         <div className="absolute top-0 right-0 w-40 h-40 bg-orange-500/10 rounded-full blur-3xl pointer-events-none"></div>
         <div className="relative z-10">
           <div className="flex justify-between items-start mb-6">
-            <div className="w-16 h-16 bg-zinc-800 rounded-2xl flex items-center justify-center font-black text-3xl text-white border border-zinc-700 shadow-inner">{user?.name?.charAt(0) || 'U'}</div>
+            <div className="w-16 h-16 bg-zinc-800 rounded-2xl flex items-center justify-center font-black text-3xl text-white border border-zinc-700 shadow-inner">{userNameChar}</div>
             <span className="bg-zinc-900 text-orange-500 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border border-zinc-800">{user?.deliveryType || 'Home Del.'}</span>
           </div>
-          <h2 className="text-3xl font-black mb-1 text-white">{user?.name || 'Unknown'}</h2>
+          <h2 className="text-3xl font-black mb-1 text-white">{user?.name || 'Customer'}</h2>
           <p className="text-zinc-400 font-medium flex items-center gap-2 mb-6 font-mono"><Phone size={16} className="text-zinc-500"/> {user?.phone || 'No phone'}</p>
           <div className="bg-[#0a0a0a] p-5 rounded-2xl border border-zinc-800/80">
              <p className="text-zinc-500 text-[10px] uppercase font-black tracking-widest flex items-center gap-1.5 mb-2"><MapPin size={12}/> Delivery Address</p>
@@ -483,16 +564,15 @@ function AccountView({ user, setUser, showToast }) {
         </div>
       </div>
       
-      <div className="grid grid-cols-2 gap-3 pb-20">
-        <button onClick={()=>setIsEditing(true)} className="bg-[#121212] border border-zinc-800 py-4 rounded-2xl font-black flex justify-center items-center gap-2 text-white hover:bg-zinc-900 transition"><Edit3 size={16}/> Edit Info</button>
-        <button onClick={()=>{setUser(null); setIsEditing(true);}} className="bg-red-500/10 border border-red-500/20 py-4 rounded-2xl font-black flex justify-center items-center gap-2 text-red-500 hover:bg-red-500/20 transition"><LogOut size={16}/> Logout</button>
+      <div className="grid grid-cols-1 pb-20">
+        <button onClick={()=>setIsEditing(true)} className="bg-[#121212] border border-zinc-800 py-4 rounded-2xl font-black flex justify-center items-center gap-2 text-white hover:bg-zinc-900 transition"><Edit3 size={16}/> Edit My Information</button>
       </div>
     </div>
   );
 }
 
-// --- Drawer Coodgu (Daraz Style Cart Drawer) ---
-function CartDrawer({ cart, setCart, selectedItems, setSelectedItems, onClose, user, config, db, setView, showToast }) {
+// --- Cart Drawer ---
+function CartDrawer({ cart, updateCartQty, removeCartItem, selectedItems, setSelectedItems, onClose, user, config, db, setView, showToast, clearCartFromCloud }) {
   const [loading, setLoading] = useState(false);
   
   const selectedCartObjects = cart.filter(item => selectedItems.includes(item.id));
@@ -513,17 +593,11 @@ function CartDrawer({ cart, setCart, selectedItems, setSelectedItems, onClose, u
     else setSelectedItems([...selectedItems, id]);
   };
 
-  const handleDeleteItem = (id) => {
-    setCart(cart.filter(i => i.id !== id));
-    setSelectedItems(selectedItems.filter(i => i !== id));
-    showToast("Removed from cart");
-  };
-
   const handleCheckout = async () => {
     if(selectedCartObjects.length === 0) {
       return showToast("Please select items to buy.");
     }
-    if(!user) { 
+    if(!user || !user.name || !user.phone) { 
       showToast("Save your delivery info first!"); 
       onClose(); 
       setView('account'); 
@@ -551,12 +625,17 @@ function CartDrawer({ cart, setCart, selectedItems, setSelectedItems, onClose, u
       const whatsappNum = config.whatsapp || "8801700000000";
       const waUrl = `https://wa.me/${whatsappNum}?text=${encodeURIComponent(msg)}`;
 
-      setCart(cart.filter(item => !selectedItems.includes(item.id)));
+      // Remove checked out items and update cloud
+      const remainingItems = cart.filter(item => !selectedItems.includes(item.id));
+      clearCartFromCloud(remainingItems);
       setSelectedItems([]);
       onClose();
       
       window.open(waUrl, '_blank');
-    } catch (e) { showToast("Error placing order."); }
+    } catch (e) { 
+      console.error(e);
+      showToast("Error placing order."); 
+    }
     setLoading(false);
   };
 
@@ -598,28 +677,28 @@ function CartDrawer({ cart, setCart, selectedItems, setSelectedItems, onClose, u
                     <div className="w-20 h-20 bg-zinc-900 rounded-xl overflow-hidden flex items-center justify-center p-2"><img src={item.images[0]} className="w-full h-full object-contain drop-shadow-md"/></div>
                     
                     <div className="flex-1 flex flex-col justify-center py-1">
-                      <h4 className="font-bold text-sm text-zinc-200 line-clamp-2 leading-snug mb-2 pr-2" onClick={() => toggleItem(item.id)}>{item.name}</h4>
+                      <h4 className="font-bold text-sm text-zinc-200 line-clamp-2 leading-snug mb-2 pr-2 cursor-pointer" onClick={() => toggleItem(item.id)}>{item.name}</h4>
                       <div className="flex justify-between items-end mt-auto">
                         <p className="text-orange-500 font-black">{config.currency || '৳'}{item.price}</p>
                         <div className="flex gap-4 items-center bg-zinc-900 rounded-lg px-2 py-1 w-max border border-zinc-800">
-                          <button className="text-zinc-400 font-bold text-lg px-1 active:scale-90" onClick={()=>setCart(cart.map(i=>i.id===item.id?{...i,qty:Math.max(1,i.qty-1)}:i))}>-</button>
-                          <span className="text-sm font-black w-4 text-center text-white">{item.qty}</span>
-                          <button className="text-zinc-400 font-bold text-lg px-1 active:scale-90" onClick={()=>setCart(cart.map(i=>i.id===item.id?{...i,qty:i.qty+1}:i))}>+</button>
+                          <button className="text-zinc-400 font-bold text-lg px-1 active:scale-90" onClick={()=>updateCartQty(item.id, Math.max(1, (item.qty||1)-1))}>-</button>
+                          <span className="text-sm font-black w-4 text-center text-white">{item.qty || 1}</span>
+                          <button className="text-zinc-400 font-bold text-lg px-1 active:scale-90" onClick={()=>updateCartQty(item.id, (item.qty||1)+1)}>+</button>
                         </div>
                       </div>
                     </div>
-                    <button onClick={()=>handleDeleteItem(item.id)} className="absolute top-3 right-3 p-1.5 text-zinc-600 hover:text-red-500 transition bg-zinc-900 rounded-lg"><Trash2 size={14}/></button>
+                    <button onClick={()=>removeCartItem(item.id)} className="absolute top-3 right-3 p-1.5 text-zinc-600 hover:text-red-500 transition bg-zinc-900 rounded-lg"><Trash2 size={14}/></button>
                   </div>
                 )
               })}
 
-              {user ? (
+              {user?.name ? (
                 <div className="bg-[#121212] p-5 rounded-2xl border border-zinc-800 mt-6 shadow-sm relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-20 h-20 bg-blue-500/5 rounded-bl-full pointer-events-none"></div>
                   <div className="flex justify-between items-center mb-3 relative z-10"><p className="text-[10px] uppercase font-black tracking-widest text-zinc-500 flex items-center gap-1"><MapPin size={12}/> Deliver To</p><span onClick={()=>{onClose(); setView('account')}} className="text-[10px] font-black uppercase tracking-wider text-orange-500 cursor-pointer bg-orange-500/10 border border-orange-500/20 px-2 py-1 rounded-md active:scale-95">Edit</span></div>
-                  <p className="font-black text-white relative z-10">{user?.name || ''}</p>
-                  <p className="text-xs font-bold text-zinc-400 font-mono mt-1 mb-2 relative z-10">{user?.phone || ''}</p>
-                  <p className="text-xs text-zinc-400 leading-relaxed font-medium bg-[#0a0a0a] p-3 rounded-xl border border-zinc-800/50 relative z-10">{user?.address || ''}, {user?.district || ''}</p>
+                  <p className="font-black text-white relative z-10">{user.name}</p>
+                  <p className="text-xs font-bold text-zinc-400 font-mono mt-1 mb-2 relative z-10">{user.phone}</p>
+                  <p className="text-xs text-zinc-400 leading-relaxed font-medium bg-[#0a0a0a] p-3 rounded-xl border border-zinc-800/50 relative z-10">{user.address}, {user.district}</p>
                 </div>
               ) : (
                 <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl text-center mt-6 shadow-inner">
@@ -634,7 +713,7 @@ function CartDrawer({ cart, setCart, selectedItems, setSelectedItems, onClose, u
         {cart.length > 0 && (
           <div className="p-5 bg-[#121212] border-t border-zinc-800 z-10 rounded-tl-3xl shadow-[0_-10px_40px_rgba(0,0,0,1)]">
             <div className="space-y-2.5 mb-4 text-sm font-bold text-zinc-400">
-              <div className="flex justify-between"><span>Selected Items ({selectedCartObjects.reduce((a,b)=>a+b.qty,0)})</span><span className="text-white">{config.currency || '৳'}{subtotal}</span></div>
+              <div className="flex justify-between"><span>Selected Items ({selectedCartObjects.reduce((a,b)=>a+(b.qty||1),0)})</span><span className="text-white">{config.currency || '৳'}{subtotal}</span></div>
               <div className="flex justify-between"><span>Delivery Fee</span><span className="text-white">{selectedCartObjects.length > 0 ? `${config.currency || '৳'}${delivery}` : '৳0'}</span></div>
             </div>
             <div className="flex justify-between mb-5 font-black text-xl text-white border-t border-dashed border-zinc-800 pt-3">
