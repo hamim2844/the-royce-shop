@@ -6,7 +6,7 @@ import { getFirestore, collection, onSnapshot, addDoc } from "firebase/firestore
 import { 
   ShoppingCart, X, Phone, MapPin, CheckCircle, Star, 
   ChevronLeft, Search, Home, Grid, User, Heart, Edit3, Trash2, 
-  ArrowRight, ShieldCheck
+  ArrowRight, ShieldCheck, Map, CreditCard, ChevronDown, Share2, ArrowDownUp
 } from 'lucide-react';
 
 // --- Firebase Setup ---
@@ -22,9 +22,16 @@ const firebaseConfig = {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 
-const LOCATION_DATA = {
-  "Dhaka": {"Dhaka": ["Savar", "Dhamrai", "Keraniganj", "Nawabganj", "Adabor", "Uttara", "Mirpur", "Dhanmondi"]},
-  "Rajshahi": {"Natore": ["Natore Sadar", "Singra", "Baraigram", "Lalpur", "Bagatipara", "Gurudaspur", "Naldanga"], "Rajshahi": ["Boalia", "Motihar", "Rajpara", "Paba", "Bagha"]}
+// --- ALL 64 DISTRICTS OF BANGLADESH ---
+const BD_LOCATIONS = {
+  "Dhaka": ["Dhaka", "Faridpur", "Gazipur", "Gopalganj", "Kishoreganj", "Madaripur", "Manikganj", "Munshiganj", "Narayanganj", "Narsingdi", "Rajbari", "Shariatpur", "Tangail"],
+  "Chattogram": ["Bandarban", "Brahmanbaria", "Chandpur", "Chattogram", "Comilla", "Cox's Bazar", "Feni", "Khagrachari", "Lakshmipur", "Noakhali", "Rangamati"],
+  "Rajshahi": ["Bogura", "Joypurhat", "Naogaon", "Natore", "Chapainawabganj", "Pabna", "Rajshahi", "Sirajganj"],
+  "Khulna": ["Bagerhat", "Chuadanga", "Jashore", "Jhenaidah", "Khulna", "Kushtia", "Magura", "Meherpur", "Narail", "Satkhira"],
+  "Barishal": ["Barguna", "Barishal", "Bhola", "Jhalokati", "Patuakhali", "Pirojpur"],
+  "Sylhet": ["Habiganj", "Moulvibazar", "Sunamganj", "Sylhet"],
+  "Rangpur": ["Dinajpur", "Gaibandha", "Kurigram", "Lalmonirhat", "Nilphamari", "Panchagarh", "Rangpur", "Thakurgaon"],
+  "Mymensingh": ["Jamalpur", "Mymensingh", "Netrokona", "Sherpur"]
 };
 
 export default function Website() {
@@ -34,17 +41,28 @@ export default function Website() {
   const [wishlist, setWishlist] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [user, setUser] = useState(null);
+  
+  // App States
   const [searchTerm, setSearchTerm] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
+  const [sortBy, setSortBy] = useState("default"); // default, low-high, high-low
+  const [toast, setToast] = useState(null); // Custom Alert System
   
+  // DB States
   const [products, setProducts] = useState([]);
   const [config, setConfig] = useState({ 
     shopName: "THE ROYCE", currency: "৳", deliveryCharge: 130, 
-    heroTitle: "Premium Tech Sale", heroSubtitle: "Discover the best gadgets", heroBadge: "TRENDING",
+    heroTitle: "Premium Tech Drop", heroSubtitle: "Discover the latest innovations", heroBadge: "TRENDING",
     heroImage: "https://images.unsplash.com/photo-1550009158-9ff169c66284?w=800",
     whatsapp: "8801700000000"
   });
   const [loadingProducts, setLoadingProducts] = useState(true);
+
+  // --- Custom Toast Notification ---
+  const showToast = (message) => {
+    setToast(message);
+    setTimeout(() => setToast(null), 3000);
+  };
 
   useEffect(() => {
     const unsubProducts = onSnapshot(collection(db, "products"), (snapshot) => {
@@ -78,38 +96,64 @@ export default function Website() {
     const existing = cart.find(i => i.id === product.id);
     if (existing) setCart(cart.map(i => i.id === product.id ? { ...i, qty: i.qty + 1 } : i));
     else setCart([...cart, { ...product, qty: 1 }]);
+    
+    showToast(`${product.name} added to cart!`);
     if(openDrawer) setIsCartOpen(true);
   };
 
+  const toggleWishlist = (product) => {
+    const exists = wishlist.find(i => i.id === product.id);
+    if (exists) {
+      setWishlist(wishlist.filter(i => i.id !== product.id));
+      showToast("Removed from Wishlist");
+    } else {
+      setWishlist([...wishlist, product]);
+      showToast("Added to Wishlist");
+    }
+  };
+
+  // Processing Products (Search, Filter, Sort)
   const categories = ["All", ...new Set(products.map(p => p.category).filter(Boolean))];
   
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = activeCategory === "All" || p.category === activeCategory;
-    return matchesSearch && matchesCategory;
-  });
+  let displayedProducts = [...products];
+  if (searchTerm) displayedProducts = displayedProducts.filter(p => p.name?.toLowerCase().includes(searchTerm.toLowerCase()));
+  if (activeCategory !== "All") displayedProducts = displayedProducts.filter(p => p.category === activeCategory);
+  if (sortBy === "price-low") displayedProducts.sort((a,b) => (Number(a.price)||0) - (Number(b.price)||0));
+  if (sortBy === "price-high") displayedProducts.sort((a,b) => (Number(b.price)||0) - (Number(a.price)||0));
+
+  const relatedProducts = selectedProduct ? products.filter(p => p.category === selectedProduct.category && p.id !== selectedProduct.id).slice(0,4) : [];
 
   return (
-    <div className="font-sans text-slate-800 bg-[#f8f9fc] min-h-screen pb-24 selection:bg-slate-900 selection:text-white">
-      {/* Modern Glassmorphism Header */}
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-lg border-b border-slate-200/50">
+    <div className="font-sans text-white bg-[#0a0a0a] min-h-screen pb-24 selection:bg-orange-500 selection:text-white relative">
+      
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 animate-slideInDown">
+          <div className="bg-white/10 backdrop-blur-xl border border-white/20 text-white px-5 py-3 rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.8)] flex items-center gap-2 font-bold text-sm">
+            <CheckCircle size={16} className="text-orange-500"/> {toast}
+          </div>
+        </div>
+      )}
+
+      {/* Dark Glassmorphism Header */}
+      <header className="sticky top-0 z-40 bg-[#0a0a0a]/80 backdrop-blur-xl border-b border-zinc-800/80">
         <div className="max-w-md mx-auto px-5 py-4 flex items-center justify-between">
           {view !== 'home' ? (
-            <button onClick={() => setView('home')} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition"><ChevronLeft size={20}/></button>
+            <button onClick={() => setView('home')} className="p-2.5 bg-zinc-900 rounded-full hover:bg-zinc-800 active:scale-90 transition border border-zinc-800"><ChevronLeft size={20} className="text-zinc-300"/></button>
           ) : (
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 bg-gradient-to-br from-slate-900 to-slate-700 rounded-xl flex items-center justify-center text-white font-black text-lg shadow-md">R</div>
-              <span className="font-black text-xl tracking-tight text-slate-900">{config.shopName || 'ROYCE'}</span>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-orange-500 rounded-xl flex items-center justify-center text-black font-black text-lg shadow-[0_0_15px_rgba(249,115,22,0.4)]">R</div>
+              <span className="font-black text-xl tracking-widest text-white uppercase">{config.shopName || 'ROYCE'}</span>
             </div>
           )}
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             {view === 'home' && (
-              <button onClick={() => document.getElementById('searchInput').focus()} className="p-2 text-slate-500 hover:text-slate-900 transition"><Search size={22}/></button>
+              <button onClick={() => document.getElementById('searchInput').focus()} className="text-zinc-400 hover:text-white transition active:scale-90"><Search size={22}/></button>
             )}
-            <button onClick={() => setIsCartOpen(true)} className="relative p-2 text-slate-800 bg-slate-100 rounded-full hover:bg-slate-200 transition">
+            <button onClick={() => setIsCartOpen(true)} className="relative p-2 text-zinc-300 hover:text-white transition active:scale-90 bg-zinc-900 rounded-full border border-zinc-800">
               <ShoppingCart size={20} />
-              {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold border-2 border-white">{cart.reduce((a,b)=>a+b.qty,0)}</span>}
+              {cart.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-orange-500 text-black text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-black border-2 border-[#0a0a0a]">{cart.reduce((a,b)=>a+b.qty,0)}</span>}
             </button>
           </div>
         </div>
@@ -118,73 +162,81 @@ export default function Website() {
       <main className="max-w-md mx-auto">
         {view === 'home' && (
           <div className="animate-fadeIn">
-            {/* Search Bar section */}
-            <div className="px-5 pt-4 pb-2">
+            {/* Dark Search Bar */}
+            <div className="px-5 pt-5 pb-3">
                <div className="relative">
-                 <input id="searchInput" className="w-full bg-white border border-slate-200/80 rounded-2xl py-3.5 pl-12 pr-4 text-sm outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-900/5 shadow-[0_2px_10px_rgba(0,0,0,0.02)] transition-all" placeholder="What are you looking for?" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                 <Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
+                 <input id="searchInput" className="w-full bg-zinc-900/60 border border-zinc-800 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white placeholder-zinc-500 outline-none focus:border-orange-500/50 focus:bg-zinc-900 transition-all shadow-inner" placeholder="Search premium gadgets..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                 <Search className="absolute left-4 top-3.5 text-zinc-500" size={18} />
                </div>
             </div>
 
-            {/* Premium Hero Banner */}
+            {/* Premium Dark Hero Banner */}
             {!searchTerm && (
-              <div className="px-5 py-4">
-                <div className="bg-slate-900 rounded-3xl p-6 text-white relative overflow-hidden shadow-2xl shadow-slate-900/20 h-48 flex flex-col justify-center">
-                  <div className="relative z-10 w-2/3">
-                    {config.heroBadge && <span className="inline-block bg-white/20 text-[10px] font-bold px-2.5 py-1 rounded-lg backdrop-blur-md uppercase tracking-wider mb-2">{config.heroBadge}</span>}
-                    <h2 className="text-2xl font-black mb-1.5 leading-tight">{config.heroTitle || "New Collection"}</h2>
-                    <p className="text-slate-300 text-xs font-medium">{config.heroSubtitle}</p>
-                    <button className="mt-4 bg-white text-slate-900 px-5 py-2 rounded-full text-xs font-bold flex items-center gap-1 hover:bg-slate-100 transition">Shop Now <ArrowRight size={14}/></button>
+              <div className="px-5 py-2">
+                <div className="bg-zinc-900 rounded-[2rem] p-6 text-white relative overflow-hidden border border-zinc-800 shadow-[0_10px_30px_rgba(0,0,0,0.5)] h-48 flex flex-col justify-center">
+                  <div className="relative z-10 w-[70%]">
+                    {config.heroBadge && <span className="inline-block bg-orange-500/10 text-orange-500 text-[9px] font-black px-3 py-1.5 rounded-lg uppercase tracking-widest mb-3 border border-orange-500/20">{config.heroBadge}</span>}
+                    <h2 className="text-3xl font-black mb-1.5 leading-tight text-white tracking-tight">{config.heroTitle || "New Drop"}</h2>
+                    <p className="text-zinc-400 text-xs font-medium">{config.heroSubtitle}</p>
                   </div>
-                  {config.heroImage && <img src={config.heroImage} className="absolute right-0 top-0 h-full w-2/3 object-cover opacity-60 mix-blend-overlay pointer-events-none" />}
-                  <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-slate-900/60 to-transparent pointer-events-none"></div>
+                  {config.heroImage && <img src={config.heroImage} className="absolute right-0 top-0 h-full w-2/3 object-cover opacity-50 mix-blend-screen pointer-events-none mask-image-gradient" />}
+                  <div className="absolute inset-0 bg-gradient-to-r from-zinc-900 via-zinc-900/90 to-transparent pointer-events-none"></div>
                 </div>
               </div>
             )}
 
-            {/* Category Chips */}
-            {!searchTerm && categories.length > 1 && (
-              <div className="px-5 py-2 flex gap-2 overflow-x-auto scrollbar-hide pb-2">
-                {categories.map(cat => (
-                  <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${activeCategory === cat ? 'bg-slate-900 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200'}`}>
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* Filter & Sort Bar */}
+            <div className="px-5 py-4 flex items-center justify-between gap-2 sticky top-[72px] z-30 bg-[#0a0a0a]/90 backdrop-blur-md">
+               {/* Category Chips */}
+               <div className="flex gap-2 overflow-x-auto scrollbar-hide flex-1 pr-4">
+                 {categories.map(cat => (
+                   <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${activeCategory === cat ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white'}`}>
+                     {cat}
+                   </button>
+                 ))}
+               </div>
+               
+               {/* Sort Dropdown */}
+               <div className="relative shrink-0">
+                 <select className="appearance-none bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-bold py-2 pl-3 pr-8 rounded-xl outline-none focus:border-orange-500" value={sortBy} onChange={(e)=>setSortBy(e.target.value)}>
+                   <option value="default">Sort By</option>
+                   <option value="price-low">Price: Low-High</option>
+                   <option value="price-high">Price: High-Low</option>
+                 </select>
+                 <ArrowDownUp size={12} className="absolute right-3 top-2.5 text-zinc-500 pointer-events-none"/>
+               </div>
+            </div>
             
-            <div className="px-5 pt-4">
-              <div className="flex justify-between items-end mb-4">
-                <h3 className="font-black text-lg">{searchTerm ? 'Search Results' : 'Featured Products'}</h3>
-                {!searchTerm && <span className="text-xs font-bold text-orange-600 cursor-pointer">View All</span>}
-              </div>
-
+            <div className="px-5 pt-2">
               {loadingProducts ? (
-                <div className="flex flex-col items-center justify-center py-20 text-slate-400"><div className="w-8 h-8 border-4 border-slate-200 border-t-slate-900 rounded-full animate-spin mb-3"></div><p className="text-sm font-medium">Loading...</p></div>
-              ) : filteredProducts.length === 0 ? (
-                <div className="text-center py-20 text-slate-400 bg-white rounded-3xl border border-dashed border-slate-300 mx-2"><Search size={40} className="mx-auto mb-3 opacity-20"/><p className="font-medium text-sm">No products found.</p></div>
+                <div className="flex flex-col items-center justify-center py-20 text-zinc-500"><div className="w-8 h-8 border-4 border-zinc-800 border-t-orange-500 rounded-full animate-spin mb-3"></div><p className="text-sm font-medium tracking-widest uppercase text-[10px]">Loading Catalog...</p></div>
+              ) : displayedProducts.length === 0 ? (
+                <div className="text-center py-20 text-zinc-500 bg-zinc-900/30 rounded-[2rem] border border-dashed border-zinc-800"><Search size={40} className="mx-auto mb-3 opacity-20"/><p className="font-medium text-sm">No items found.</p></div>
               ) : (
                 <div className="grid grid-cols-2 gap-4 pb-4">
-                  {filteredProducts.map(product => {
+                  {displayedProducts.map(product => {
                     const isWishlisted = wishlist.some(i => i.id === product.id);
                     return (
-                      <div key={product.id} className="bg-white rounded-3xl p-3 border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] relative group flex flex-col h-full">
-                        <button onClick={() => toggleWishlist(product)} className="absolute top-3 right-3 z-20 w-8 h-8 bg-white/80 backdrop-blur-md rounded-full flex items-center justify-center shadow-sm active:scale-90 transition"><Heart size={16} fill={isWishlisted ? "currentColor" : "none"} className={isWishlisted ? "text-red-500" : "text-slate-400"} /></button>
+                      <div key={product.id} className="bg-[#121212] rounded-3xl p-3.5 border border-zinc-800/80 relative group flex flex-col h-full hover:border-zinc-700 transition-colors shadow-lg">
+                        <button onClick={() => toggleWishlist(product)} className="absolute top-4 right-4 z-20 w-8 h-8 bg-[#0a0a0a]/80 backdrop-blur-md rounded-full flex items-center justify-center border border-zinc-800 active:scale-90 transition"><Heart size={14} fill={isWishlisted ? "currentColor" : "none"} className={isWishlisted ? "text-orange-500" : "text-zinc-400"} /></button>
                         
-                        <div onClick={() => { setSelectedProduct(product); setView('details'); window.scrollTo(0,0); }} className="aspect-square bg-slate-50/50 rounded-2xl mb-3 overflow-hidden relative cursor-pointer p-2 flex items-center justify-center">
-                          <img src={product.images?.[0] || 'https://via.placeholder.com/300'} className="w-full h-full object-contain mix-blend-multiply drop-shadow-sm transition-transform group-hover:scale-105" />
-                          {product.badge && <span className="absolute bottom-2 left-2 bg-slate-900 text-white text-[9px] font-black px-2 py-1 rounded-lg shadow-md tracking-wider uppercase">{product.badge}</span>}
+                        <div onClick={() => { setSelectedProduct(product); setView('details'); window.scrollTo(0,0); }} className="aspect-square bg-gradient-to-br from-zinc-800/50 to-zinc-900 rounded-2xl mb-4 overflow-hidden relative cursor-pointer p-4 flex items-center justify-center">
+                          <img src={product.images?.[0] || 'https://via.placeholder.com/300'} className="w-full h-full object-contain drop-shadow-2xl transition-transform duration-700 group-hover:scale-110" />
+                          {product.badge && <span className="absolute bottom-2 left-2 bg-white text-black text-[8px] font-black px-2 py-1 rounded-md shadow-md tracking-widest uppercase">{product.badge}</span>}
                         </div>
                         
                         <div className="flex-1 flex flex-col justify-between px-1">
-                          <h3 className="font-bold text-slate-800 text-sm line-clamp-2 leading-snug cursor-pointer mb-2" onClick={() => { setSelectedProduct(product); setView('details'); }}>{product.name}</h3>
+                          <div className="mb-3">
+                            <span className="text-[9px] text-zinc-500 font-black uppercase tracking-widest">{product.category}</span>
+                            <h3 className="font-bold text-zinc-100 text-sm line-clamp-2 leading-snug cursor-pointer mt-1" onClick={() => { setSelectedProduct(product); setView('details'); }}>{product.name}</h3>
+                          </div>
                           
                           <div className="flex items-center justify-between mt-auto">
                             <div>
-                              <span className="text-lg font-black text-slate-900">{config.currency || '৳'}{product.price}</span>
-                              {product.originalPrice && <p className="text-[10px] text-slate-400 line-through -mt-1">{config.currency || '৳'}{product.originalPrice}</p>}
+                              <span className="text-lg font-black text-white">{config.currency || '৳'}{product.price}</span>
+                              {product.originalPrice && <p className="text-[10px] text-zinc-500 line-through -mt-1">{config.currency || '৳'}{product.originalPrice}</p>}
                             </div>
-                            <button onClick={() => addToCart(product, true)} className="w-8 h-8 bg-slate-900 text-white rounded-full flex items-center justify-center active:scale-90 transition shadow-lg"><ShoppingCart size={14}/></button>
+                            <button onClick={() => addToCart(product, false)} className="w-9 h-9 bg-zinc-800 text-white rounded-xl flex items-center justify-center active:scale-90 transition hover:bg-orange-500 hover:text-black border border-zinc-700"><ShoppingCart size={16}/></button>
                           </div>
                         </div>
                       </div>
@@ -196,130 +248,203 @@ export default function Website() {
           </div>
         )}
         
-        {/* Modern Product Details */}
+        {/* Dark Product Details */}
         {view === 'details' && selectedProduct && (
-          <div className="animate-slideInRight bg-white min-h-screen">
-            <div className="relative bg-slate-100">
-               <div className="w-full aspect-square overflow-hidden relative flex items-center justify-center p-8">
-                 <img src={selectedProduct.images?.[0] || 'https://via.placeholder.com/600'} className="w-full h-full object-contain mix-blend-multiply drop-shadow-xl" />
+          <div className="animate-slideInRight bg-[#0a0a0a] min-h-screen">
+            <div className="relative bg-[#121212] border-b border-zinc-800 rounded-b-[3rem] shadow-2xl">
+               <div className="absolute top-4 right-4 flex gap-2 z-10">
+                 <button onClick={() => { navigator.clipboard.writeText(`${window.location.href} - Checkout ${selectedProduct.name} at ${config.shopName}`); showToast("Link copied!"); }} className="w-10 h-10 bg-[#0a0a0a]/80 backdrop-blur-md rounded-full flex items-center justify-center border border-zinc-700 text-white active:scale-90"><Share2 size={16}/></button>
+                 <button onClick={() => toggleWishlist(selectedProduct)} className="w-10 h-10 bg-[#0a0a0a]/80 backdrop-blur-md rounded-full flex items-center justify-center border border-zinc-700 active:scale-90"><Heart size={16} fill={wishlist.some(i => i.id === selectedProduct.id) ? "#f97316" : "none"} className={wishlist.some(i => i.id === selectedProduct.id) ? "text-orange-500" : "text-zinc-300"}/></button>
                </div>
-               <div className="absolute -bottom-6 left-0 right-0 h-12 bg-white rounded-t-[3rem]"></div>
+               <div className="w-full aspect-[4/3] overflow-hidden relative flex items-center justify-center p-12">
+                 <img src={selectedProduct.images?.[0] || 'https://via.placeholder.com/600'} className="w-full h-full object-contain drop-shadow-[0_30px_50px_rgba(0,0,0,0.6)] animate-fadeIn" />
+               </div>
             </div>
 
-            <div className="px-6 pb-32 bg-white relative">
-              <div className="flex justify-between items-start mb-2">
-                <h1 className="text-2xl font-black text-slate-900 leading-tight pr-4">{selectedProduct.name}</h1>
-                <button onClick={() => toggleWishlist(selectedProduct)} className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center shrink-0"><Heart size={20} fill={wishlist.some(i => i.id === selectedProduct.id) ? "#ef4444" : "none"} className={wishlist.some(i => i.id === selectedProduct.id) ? "text-red-500" : "text-slate-400"}/></button>
+            <div className="px-6 py-8 relative">
+              <div className="flex items-center gap-3 mb-4">
+                 <span className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-widest">{selectedProduct.category}</span>
+                 <div className="bg-orange-500/10 px-2 py-1 rounded-lg border border-orange-500/20 flex items-center gap-1"><Star size={12} className="text-orange-500" fill="currentColor"/><span className="text-xs font-black text-orange-500">4.9</span></div>
               </div>
               
-              <div className="flex items-center gap-3 mb-6">
-                 <div className="bg-orange-50 px-3 py-1.5 rounded-xl border border-orange-100 flex items-center gap-1.5"><Star size={14} className="text-orange-500" fill="currentColor"/><span className="text-sm font-bold text-orange-700">4.9</span></div>
-                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{selectedProduct.category}</span>
+              <h1 className="text-3xl font-black text-white leading-tight mb-4">{selectedProduct.name}</h1>
+
+              <div className="flex items-end mb-8 bg-[#121212] p-5 rounded-3xl border border-zinc-800 w-max">
+                <span className="text-4xl font-black text-orange-500 tracking-tight">{config.currency || '৳'}{selectedProduct.price}</span>
+                {selectedProduct.originalPrice && <span className="text-lg text-zinc-500 line-through ml-3 mb-1 font-medium">{config.currency || '৳'}{selectedProduct.originalPrice}</span>}
               </div>
 
-              <div className="flex items-end mb-8">
-                <span className="text-4xl font-black text-slate-900 tracking-tight">{config.currency || '৳'}{selectedProduct.price}</span>
-                {selectedProduct.originalPrice && <span className="text-lg text-slate-400 line-through ml-3 mb-1 font-medium">{config.currency || '৳'}{selectedProduct.originalPrice}</span>}
-              </div>
+              <h3 className="font-black text-lg mb-4 text-white flex items-center gap-2">Details</h3>
+              <p className="text-zinc-400 text-sm leading-relaxed mb-8 bg-zinc-900/50 p-5 rounded-2xl border border-zinc-800">{selectedProduct.details}</p>
 
-              <h3 className="font-black text-lg mb-3">Description</h3>
-              <p className="text-slate-600 text-sm leading-relaxed mb-6">{selectedProduct.details}</p>
-
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center gap-4">
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center shrink-0"><ShieldCheck size={24} className="text-blue-600"/></div>
+              <div className="bg-[#121212] p-5 rounded-2xl border border-zinc-800/80 flex items-center gap-4 mb-10">
+                <div className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center shrink-0 border border-zinc-800"><ShieldCheck size={20} className="text-zinc-300"/></div>
                 <div>
-                  <h4 className="font-bold text-sm text-slate-900">Warranty Policy</h4>
-                  <p className="text-xs text-slate-500 mt-0.5">{selectedProduct.warranty || 'Check physical product on delivery.'}</p>
+                  <h4 className="font-bold text-sm text-white">Warranty Policy</h4>
+                  <p className="text-xs text-zinc-500 mt-1">{selectedProduct.warranty || 'Check physical product on delivery.'}</p>
                 </div>
               </div>
+
+              {/* Related Products */}
+              {relatedProducts.length > 0 && (
+                <div className="border-t border-zinc-800 pt-8 pb-10">
+                  <h3 className="font-black text-lg mb-4 text-white">You may also like</h3>
+                  <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+                    {relatedProducts.map(rp => (
+                      <div key={rp.id} onClick={() => { setSelectedProduct(rp); window.scrollTo(0,0); }} className="min-w-[140px] bg-[#121212] rounded-2xl p-3 border border-zinc-800 shrink-0 cursor-pointer active:scale-95 transition">
+                        <img src={rp.images[0]} className="w-full h-24 object-contain mb-3 drop-shadow-md bg-zinc-900 rounded-xl p-2" />
+                        <h4 className="font-bold text-xs text-white line-clamp-1">{rp.name}</h4>
+                        <p className="text-orange-500 font-black text-sm mt-1">{config.currency || '৳'}{rp.price}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-xl border-t border-slate-200/50 z-30 pb-safe">
+            <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#0a0a0a]/90 backdrop-blur-xl border-t border-zinc-800 z-30 pb-safe">
               <div className="max-w-md mx-auto flex gap-3">
-                <button onClick={() => addToCart(selectedProduct)} className="w-14 h-14 rounded-2xl border-2 border-slate-200 flex items-center justify-center text-slate-700 active:bg-slate-50 transition shrink-0"><ShoppingCart size={24}/></button>
-                <button onClick={() => addToCart(selectedProduct, true)} className="flex-1 h-14 rounded-2xl bg-slate-900 text-white font-black text-lg shadow-xl shadow-slate-900/20 active:scale-95 transition">Buy Now</button>
+                <button onClick={() => addToCart(selectedProduct)} className="w-14 h-14 rounded-2xl border-2 border-zinc-800 flex items-center justify-center text-zinc-300 active:bg-zinc-900 transition shrink-0"><ShoppingCart size={22}/></button>
+                <button onClick={() => addToCart(selectedProduct, true)} className="flex-1 h-14 rounded-2xl bg-white text-black font-black text-lg shadow-[0_0_20px_rgba(255,255,255,0.1)] active:scale-95 transition">Order Now</button>
               </div>
             </div>
           </div>
         )}
         
-        {view === 'account' && <AccountView user={user} setUser={setUser} />}
+        {view === 'account' && <AccountView user={user} setUser={setUser} showToast={showToast} />}
       </main>
 
-      {/* Floating App Bottom Navigation */}
+      {/* Dark Floating App Bottom Navigation */}
       {view !== 'details' && (
-        <div className="fixed bottom-4 left-4 right-4 z-30 md:hidden">
-          <div className="bg-slate-900/95 backdrop-blur-md rounded-3xl p-2 flex justify-between items-center shadow-2xl shadow-slate-900/30 max-w-sm mx-auto border border-white/10">
-            <button onClick={()=>setView('home')} className={`flex-1 flex flex-col items-center justify-center h-12 rounded-2xl transition-all ${view==='home'?'bg-white/10 text-white':'text-slate-400 hover:text-white'}`}><Home size={20}/></button>
-            <button onClick={()=>{}} className={`flex-1 flex flex-col items-center justify-center h-12 rounded-2xl transition-all text-slate-400 opacity-50`}><Grid size={20}/></button>
+        <div className="fixed bottom-6 left-4 right-4 z-30 md:hidden">
+          <div className="bg-[#121212]/95 backdrop-blur-xl rounded-full p-2 flex justify-between items-center shadow-[0_10px_40px_rgba(0,0,0,0.8)] max-w-sm mx-auto border border-zinc-800 relative">
+            <button onClick={()=>setView('home')} className={`flex-1 flex flex-col items-center justify-center h-12 rounded-full transition-all ${view==='home'?'text-white bg-zinc-800':'text-zinc-500 hover:text-zinc-300'}`}><Home size={20}/></button>
+            <button onClick={()=>{setActiveCategory("All"); setView('home');}} className={`flex-1 flex flex-col items-center justify-center h-12 rounded-full transition-all text-zinc-500 hover:text-zinc-300`}><Grid size={20}/></button>
             
-            <div className="relative -top-6 w-14 h-14 bg-orange-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-orange-500/40 cursor-pointer border-4 border-[#f8f9fc] active:scale-90 transition" onClick={() => setIsCartOpen(true)}>
-              <ShoppingCart size={22} />
-              {cart.length > 0 && <span className="absolute top-0 right-0 w-3.5 h-3.5 bg-white rounded-full border border-orange-500"></span>}
+            <div className="relative -top-7 w-16 h-16 bg-orange-500 rounded-full flex items-center justify-center text-black shadow-[0_0_20px_rgba(249,115,22,0.4)] cursor-pointer border-[6px] border-[#0a0a0a] active:scale-90 transition" onClick={() => setIsCartOpen(true)}>
+              <ShoppingCart size={24} />
+              {cart.length > 0 && <span className="absolute top-0 right-0 w-3.5 h-3.5 bg-white rounded-full border-2 border-orange-500"></span>}
             </div>
             
-            <button onClick={()=>{}} className={`flex-1 flex flex-col items-center justify-center h-12 rounded-2xl transition-all text-slate-400 opacity-50`}><Heart size={20}/></button>
-            <button onClick={()=>setView('account')} className={`flex-1 flex flex-col items-center justify-center h-12 rounded-2xl transition-all ${view==='account'?'bg-white/10 text-white':'text-slate-400 hover:text-white'}`}><User size={20}/></button>
+            <button onClick={()=>setView('home')} className={`flex-1 flex flex-col items-center justify-center h-12 rounded-full transition-all text-zinc-500 hover:text-zinc-300`}><Heart size={20}/></button>
+            <button onClick={()=>setView('account')} className={`flex-1 flex flex-col items-center justify-center h-12 rounded-full transition-all ${view==='account'?'text-white bg-zinc-800':'text-zinc-500 hover:text-zinc-300'}`}><User size={20}/></button>
           </div>
         </div>
       )}
 
-      {isCartOpen && <CartDrawer cart={cart} setCart={setCart} onClose={() => setIsCartOpen(false)} user={user} config={config} db={db} setView={setView} />}
+      {isCartOpen && <CartDrawer cart={cart} setCart={setCart} onClose={() => setIsCartOpen(false)} user={user} config={config} db={db} setView={setView} showToast={showToast} />}
     </div>
   );
 }
 
-// --- User Profile View ---
-function AccountView({ user, setUser }) {
+// --- Ultra Premium Dark Profile View ---
+function AccountView({ user, setUser, showToast }) {
   const [isEditing, setIsEditing] = useState(!user);
-  const [form, setForm] = useState(user || { name: '', phone: '', division: '', district: '', address: '' });
+  const [form, setForm] = useState(user || { deliveryType: 'Home Del.', phone: '', name: '', division: '', district: '', address: '' });
 
   const handleSave = () => {
-    if(!form.name || !form.phone || !form.address) return alert("Please fill all details.");
-    setUser(form); setIsEditing(false);
+    if(!form.name || !form.phone || !form.division || !form.district || !form.address) return showToast("Please fill all details!");
+    setUser(form); 
+    setIsEditing(false);
+    showToast("Profile Saved Successfully!");
   };
+
+  const divisions = Object.keys(BD_LOCATIONS);
+  const districts = form.division ? BD_LOCATIONS[form.division] : [];
 
   if (isEditing) {
     return (
-      <div className="px-5 pt-4 animate-fadeIn">
-        <div className="bg-white p-6 rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-100">
-          <h2 className="font-black text-2xl text-center mb-6 text-slate-800">My Details</h2>
-          <div className="space-y-4">
-            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Full Name</label><input placeholder="e.g. Hasan Mahmud" className="w-full bg-slate-50 border border-slate-100 p-3.5 rounded-2xl outline-none font-bold text-slate-800 focus:bg-white focus:border-slate-300 transition" value={form.name} onChange={e=>setForm({...form, name:e.target.value})}/></div>
-            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Phone Number</label><input type="tel" placeholder="017XXXXXXXX" className="w-full bg-slate-50 border border-slate-100 p-3.5 rounded-2xl outline-none font-bold text-slate-800 focus:bg-white focus:border-slate-300 transition" value={form.phone} onChange={e=>setForm({...form, phone:e.target.value})}/></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Division</label><select className="w-full bg-slate-50 border border-slate-100 p-3.5 rounded-2xl outline-none font-bold text-slate-800" value={form.division} onChange={e=>setForm({...form, division:e.target.value, district:''})}><option value="">Select</option>{Object.keys(LOCATION_DATA).map(d=><option key={d}>{d}</option>)}</select></div>
-              <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">District</label><select className="w-full bg-slate-50 border border-slate-100 p-3.5 rounded-2xl outline-none font-bold text-slate-800" value={form.district} onChange={e=>setForm({...form, district:e.target.value})} disabled={!form.division}><option value="">Select</option>{form.division && Object.keys(LOCATION_DATA[form.division]).map(d=><option key={d}>{d}</option>)}</select></div>
+      <div className="px-4 pt-2 pb-32 animate-fadeIn">
+        <div className="bg-[#121212] p-6 rounded-[2rem] shadow-2xl border border-zinc-800/80 max-w-md mx-auto relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-bl-full pointer-events-none"></div>
+          <h2 className="font-black text-2xl mb-6 text-white flex items-center gap-2"><Map className="text-orange-500"/> Delivery Details</h2>
+          
+          <div className="space-y-5 relative z-10">
+            {/* Delivery Type */}
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2 block ml-1">Delivery Method</label>
+              <div className="flex gap-3 bg-zinc-900 p-1 rounded-2xl border border-zinc-800">
+                <button onClick={()=>setForm({...form, deliveryType: 'Home Del.'})} className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${form.deliveryType === 'Home Del.' ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700' : 'text-zinc-500'}`}>Home Delivery</button>
+                <button onClick={()=>setForm({...form, deliveryType: 'Point Del.'})} className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${form.deliveryType === 'Point Del.' ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700' : 'text-zinc-500'}`}>Pickup Point</button>
+              </div>
             </div>
-            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Full Address</label><textarea placeholder="House, Road, Area..." className="w-full bg-slate-50 border border-slate-100 p-3.5 rounded-2xl outline-none font-bold text-slate-800 focus:bg-white focus:border-slate-300 transition" rows="3" value={form.address} onChange={e=>setForm({...form, address:e.target.value})}/></div>
-            <button onClick={handleSave} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black shadow-xl shadow-slate-900/20 active:scale-95 transition text-lg mt-2">Save Profile</button>
+
+            {/* Inputs */}
+            <div className="relative">
+               <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest absolute -top-2 left-4 bg-[#121212] px-1 z-10">Phone Number</label>
+               <input type="tel" placeholder="017XXXXXXXX" className="w-full bg-transparent border border-zinc-700 p-4 rounded-2xl outline-none font-bold text-white placeholder-zinc-700 focus:border-orange-500 transition-colors relative z-0" value={form.phone} onChange={e=>setForm({...form, phone:e.target.value})}/>
+            </div>
+
+            <div className="relative">
+               <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest absolute -top-2 left-4 bg-[#121212] px-1 z-10">Full Name</label>
+               <input type="text" placeholder="Your Name" className="w-full bg-transparent border border-zinc-700 p-4 rounded-2xl outline-none font-bold text-white placeholder-zinc-700 focus:border-orange-500 transition-colors relative z-0" value={form.name} onChange={e=>setForm({...form, name:e.target.value})}/>
+            </div>
+
+            <div className="relative">
+               <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest absolute -top-2 left-4 bg-[#121212] px-1 z-10">Detailed Address</label>
+               <textarea placeholder="House, Road, Area..." className="w-full bg-transparent border border-zinc-700 p-4 rounded-2xl outline-none font-medium text-white placeholder-zinc-700 focus:border-orange-500 transition-colors relative z-0" rows="3" value={form.address} onChange={e=>setForm({...form, address:e.target.value})}/>
+            </div>
+
+            {/* Dropdowns */}
+            <div className="p-4 bg-zinc-900 rounded-2xl border border-zinc-800 space-y-4">
+               <div className="relative">
+                 <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1 block ml-1">Division</label>
+                 <div className="relative">
+                   <select className="w-full bg-[#121212] border border-zinc-700 p-3.5 rounded-xl outline-none font-bold text-white appearance-none focus:border-orange-500" value={form.division} onChange={e=>setForm({...form, division:e.target.value, district:''})}>
+                     <option value="" disabled>Select Division</option>
+                     {divisions.map(d=><option key={d} value={d} className="bg-[#121212] text-white">{d}</option>)}
+                   </select>
+                   <ChevronDown size={16} className="absolute right-4 top-4 text-zinc-500 pointer-events-none"/>
+                 </div>
+               </div>
+               
+               <div className="relative">
+                 <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1 block ml-1">District</label>
+                 <div className="relative">
+                   <select className="w-full bg-[#121212] border border-zinc-700 p-3.5 rounded-xl outline-none font-bold text-white appearance-none focus:border-orange-500 disabled:opacity-50" value={form.district} onChange={e=>setForm({...form, district:e.target.value})} disabled={!form.division}>
+                     <option value="" disabled>Select District</option>
+                     {districts.map(d=><option key={d} value={d} className="bg-[#121212] text-white">{d}</option>)}
+                   </select>
+                   <ChevronDown size={16} className="absolute right-4 top-4 text-zinc-500 pointer-events-none"/>
+                 </div>
+               </div>
+            </div>
+
+            <button onClick={handleSave} className="w-full bg-white text-black py-4 rounded-2xl font-black shadow-[0_0_20px_rgba(255,255,255,0.1)] active:scale-95 transition text-lg mt-4">Save Address</button>
           </div>
         </div>
       </div>
     )
   }
   return (
-    <div className="px-5 pt-4 space-y-4 animate-fadeIn">
-      <div className="bg-slate-900 text-white p-8 rounded-[2rem] relative overflow-hidden shadow-2xl shadow-slate-900/20">
+    <div className="px-5 pt-4 space-y-4 animate-fadeIn max-w-md mx-auto">
+      <div className="bg-[#121212] text-white p-8 rounded-[2rem] relative overflow-hidden border border-zinc-800 shadow-xl">
+        <div className="absolute top-0 right-0 w-40 h-40 bg-orange-500/10 rounded-full blur-3xl pointer-events-none"></div>
         <div className="relative z-10">
-          <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center font-black text-2xl mb-5 backdrop-blur-md border border-white/20 shadow-inner">{user.name.charAt(0)}</div>
-          <h2 className="text-3xl font-black mb-1">{user.name}</h2>
-          <p className="text-slate-300 font-medium flex items-center gap-2 mb-6"><Phone size={16}/> {user.phone}</p>
-          <div className="bg-white/10 p-5 rounded-2xl text-sm border border-white/10 backdrop-blur-md">
-             <p className="opacity-70 text-[10px] uppercase font-black tracking-widest flex items-center gap-1.5 mb-2"><MapPin size={12}/> Delivery Address</p>
-             <p className="font-bold leading-relaxed">{user.address}, {user.district}, {user.division}</p>
+          <div className="flex justify-between items-start mb-6">
+            <div className="w-16 h-16 bg-zinc-800 rounded-2xl flex items-center justify-center font-black text-3xl text-white border border-zinc-700 shadow-inner">{user.name.charAt(0)}</div>
+            <span className="bg-zinc-900 text-orange-500 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border border-zinc-800">{user.deliveryType || 'Home Del.'}</span>
+          </div>
+          <h2 className="text-3xl font-black mb-1 text-white">{user.name}</h2>
+          <p className="text-zinc-400 font-medium flex items-center gap-2 mb-6 font-mono"><Phone size={16} className="text-zinc-500"/> {user.phone}</p>
+          <div className="bg-[#0a0a0a] p-5 rounded-2xl border border-zinc-800/80">
+             <p className="text-zinc-500 text-[10px] uppercase font-black tracking-widest flex items-center gap-1.5 mb-2"><MapPin size={12}/> Delivery Address</p>
+             <p className="font-bold leading-relaxed text-zinc-200">{user.address}</p>
+             <p className="text-sm font-medium text-zinc-400 mt-1">{user.district}, {user.division}</p>
           </div>
         </div>
-        <div className="absolute -right-10 -top-10 w-48 h-48 bg-orange-500 rounded-full blur-3xl opacity-30"></div>
-        <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-blue-500 rounded-full blur-3xl opacity-20"></div>
       </div>
-      <button onClick={()=>setIsEditing(true)} className="w-full bg-white border-2 border-slate-200 py-4 rounded-2xl font-black flex justify-center items-center gap-2 text-slate-800 active:bg-slate-50 transition shadow-sm"><Edit3 size={18}/> Edit Information</button>
+      
+      <div className="grid grid-cols-2 gap-3 pb-20">
+        <button onClick={()=>setIsEditing(true)} className="bg-[#121212] border border-zinc-800 py-4 rounded-2xl font-black flex justify-center items-center gap-2 text-white hover:bg-zinc-900 transition"><Edit3 size={16}/> Edit Info</button>
+        <button onClick={()=>{setUser(null); setIsEditing(true);}} className="bg-red-500/10 border border-red-500/20 py-4 rounded-2xl font-black flex justify-center items-center gap-2 text-red-500 hover:bg-red-500/20 transition"><LogOut size={16}/> Logout</button>
+      </div>
     </div>
   );
 }
 
-// --- Cart Drawer ---
-function CartDrawer({ cart, setCart, onClose, user, config, db, setView }) {
+// --- Dark Cart Drawer ---
+function CartDrawer({ cart, setCart, onClose, user, config, db, setView, showToast }) {
   const [loading, setLoading] = useState(false);
   
   const subtotal = cart.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.qty) || 1)), 0);
@@ -327,13 +452,13 @@ function CartDrawer({ cart, setCart, onClose, user, config, db, setView }) {
   const total = subtotal + delivery;
 
   const handleCheckout = async () => {
-    if(!user) { alert("Please save your delivery info first!"); onClose(); setView('account'); return; }
+    if(!user) { showToast("Save your delivery info first!"); onClose(); setView('account'); return; }
     setLoading(true);
     try {
-      const orderData = { customer: user.name, phone: user.phone, address: `${user.address}, ${user.district}`, items: cart, total: total, status: 'Pending', date: new Date().toLocaleString() };
+      const orderData = { customer: user.name, phone: user.phone, address: `${user.address}, ${user.district}, ${user.division}`, items: cart, total: total, status: 'Pending', type: user.deliveryType || 'Home Del.', date: new Date().toLocaleString() };
       await addDoc(collection(db, "orders"), orderData);
 
-      let msg = `*New Order from Website* 🚀\n\n*Name:* ${user.name}\n*Phone:* ${user.phone}\n*Address:* ${user.address}, ${user.district}\n\n`;
+      let msg = `*New Order from Website* 🚀\n\n*Name:* ${user.name}\n*Phone:* ${user.phone}\n*Type:* ${user.deliveryType || 'Home Del.'}\n*Address:* ${user.address}, ${user.district}, ${user.division}\n\n`;
       cart.forEach(item => { msg += `▪ ${item.qty}x ${item.name} (৳${item.price * item.qty})\n`; });
       msg += `\nSubtotal: ৳${subtotal}\nDelivery: ৳${delivery}\n*Total Bill: ৳${total}*`;
 
@@ -342,56 +467,59 @@ function CartDrawer({ cart, setCart, onClose, user, config, db, setView }) {
 
       setCart([]); onClose();
       window.open(waUrl, '_blank');
-    } catch (e) { alert("Error placing order."); }
+    } catch (e) { showToast("Error placing order."); }
     setLoading(false);
   };
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose}></div>
-      <div className="relative w-full max-w-md bg-[#f8f9fc] h-full flex flex-col animate-slideInRight shadow-2xl rounded-l-[2rem] overflow-hidden">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose}></div>
+      <div className="relative w-full max-w-md bg-[#0a0a0a] h-full flex flex-col animate-slideInRight shadow-2xl border-l border-zinc-800">
         
-        <div className="bg-white px-6 py-5 flex justify-between items-center shadow-sm z-10 border-b border-slate-100">
-          <h3 className="font-black text-xl text-slate-900">Your Cart <span className="text-slate-400 font-medium text-sm ml-1">({cart.length})</span></h3>
-          <button onClick={onClose} className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center hover:bg-slate-200 transition"><X size={20} className="text-slate-600"/></button>
+        <div className="bg-[#121212] px-6 py-5 flex justify-between items-center z-10 border-b border-zinc-800">
+          <h3 className="font-black text-xl text-white flex items-center gap-2"><ShoppingCart size={20}/> Your Cart <span className="text-zinc-500 font-medium text-sm">({cart.length})</span></h3>
+          <button onClick={onClose} className="w-10 h-10 bg-zinc-900 rounded-full flex items-center justify-center hover:bg-zinc-800 border border-zinc-800 transition active:scale-90"><X size={18} className="text-zinc-400"/></button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {cart.length === 0 ? (
-             <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-5">
-               <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-sm"><ShoppingCart size={40} className="text-slate-300"/></div>
-               <p className="font-bold text-slate-500">Your cart is empty.</p>
-               <button onClick={onClose} className="px-8 py-3 bg-slate-900 rounded-full text-white font-black text-sm shadow-lg shadow-slate-900/20 active:scale-95 transition">Start Shopping</button>
+             <div className="flex flex-col items-center justify-center h-full text-zinc-600 space-y-5">
+               <div className="w-24 h-24 bg-zinc-900 rounded-full flex items-center justify-center border border-zinc-800 shadow-inner"><ShoppingCart size={32} className="text-zinc-600"/></div>
+               <p className="font-medium text-zinc-500">Your cart is feeling empty.</p>
+               <button onClick={onClose} className="px-8 py-3 bg-white rounded-full text-black font-black text-sm active:scale-95 transition">Start Shopping</button>
              </div>
           ) : (
             <>
               {cart.map(item => (
-                <div key={item.id} className="bg-white p-3 rounded-2xl border border-slate-100 flex gap-4 shadow-sm relative pr-10">
-                  <div className="w-24 h-24 bg-slate-50 rounded-xl overflow-hidden flex items-center justify-center p-2"><img src={item.images[0]} className="w-full h-full object-contain mix-blend-multiply"/></div>
+                <div key={item.id} className="bg-[#121212] p-3 rounded-2xl border border-zinc-800 flex gap-4 relative pr-10 shadow-sm">
+                  <div className="w-20 h-20 bg-zinc-900 rounded-xl overflow-hidden flex items-center justify-center p-2"><img src={item.images[0]} className="w-full h-full object-contain drop-shadow-md"/></div>
                   <div className="flex-1 flex flex-col justify-center py-1">
-                    <h4 className="font-bold text-sm text-slate-800 line-clamp-2 leading-tight mb-2">{item.name}</h4>
-                    <p className="text-orange-600 font-black text-lg">{config.currency || '৳'}{item.price}</p>
-                    <div className="flex gap-4 items-center bg-slate-50 rounded-lg px-2 py-1 w-max mt-2 border border-slate-100">
-                      <button className="text-slate-500 font-bold text-lg px-2 active:scale-90" onClick={()=>setCart(cart.map(i=>i.id===item.id?{...i,qty:Math.max(1,i.qty-1)}:i))}>-</button>
-                      <span className="text-sm font-black w-4 text-center text-slate-800">{item.qty}</span>
-                      <button className="text-slate-500 font-bold text-lg px-2 active:scale-90" onClick={()=>setCart(cart.map(i=>i.id===item.id?{...i,qty:i.qty+1}:i))}>+</button>
+                    <h4 className="font-bold text-sm text-zinc-200 line-clamp-2 leading-snug mb-2">{item.name}</h4>
+                    <div className="flex justify-between items-end mt-auto">
+                      <p className="text-orange-500 font-black">{config.currency || '৳'}{item.price}</p>
+                      <div className="flex gap-4 items-center bg-zinc-900 rounded-lg px-2 py-1 w-max border border-zinc-800">
+                        <button className="text-zinc-400 font-bold text-lg px-2 active:scale-90" onClick={()=>setCart(cart.map(i=>i.id===item.id?{...i,qty:Math.max(1,i.qty-1)}:i))}>-</button>
+                        <span className="text-sm font-black w-4 text-center text-white">{item.qty}</span>
+                        <button className="text-zinc-400 font-bold text-lg px-2 active:scale-90" onClick={()=>setCart(cart.map(i=>i.id===item.id?{...i,qty:i.qty+1}:i))}>+</button>
+                      </div>
                     </div>
                   </div>
-                  <button onClick={()=>setCart(cart.filter(i=>i.id!==item.id))} className="absolute top-4 right-4 text-slate-300 hover:text-red-500 bg-white"><Trash2 size={18}/></button>
+                  <button onClick={()=>{setCart(cart.filter(i=>i.id!==item.id)); showToast("Removed from cart");}} className="absolute top-4 right-4 text-zinc-600 hover:text-red-500 transition"><Trash2 size={16}/></button>
                 </div>
               ))}
 
               {user ? (
-                <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mt-6">
-                  <div className="flex justify-between items-center mb-3"><p className="text-[10px] uppercase font-black tracking-widest text-slate-400">Deliver To:</p><span onClick={()=>{onClose(); setView('account')}} className="text-[10px] font-black uppercase tracking-wider text-blue-600 cursor-pointer bg-blue-50 px-2 py-1 rounded-md">Edit</span></div>
-                  <p className="font-black text-slate-800">{user.name}</p>
-                  <p className="text-xs font-bold text-slate-500 font-mono mt-1 mb-2">{user.phone}</p>
-                  <p className="text-xs text-slate-600 leading-relaxed font-medium bg-slate-50 p-2 rounded-lg">{user.address}, {user.district}</p>
+                <div className="bg-[#121212] p-5 rounded-2xl border border-zinc-800 mt-6 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-blue-500/5 rounded-bl-full pointer-events-none"></div>
+                  <div className="flex justify-between items-center mb-3 relative z-10"><p className="text-[10px] uppercase font-black tracking-widest text-zinc-500 flex items-center gap-1"><MapPin size={12}/> Deliver To</p><span onClick={()=>{onClose(); setView('account')}} className="text-[10px] font-black uppercase tracking-wider text-orange-500 cursor-pointer bg-orange-500/10 border border-orange-500/20 px-2 py-1 rounded-md active:scale-95">Edit</span></div>
+                  <p className="font-black text-white relative z-10">{user.name}</p>
+                  <p className="text-xs font-bold text-zinc-400 font-mono mt-1 mb-2 relative z-10">{user.phone}</p>
+                  <p className="text-xs text-zinc-400 leading-relaxed font-medium bg-[#0a0a0a] p-3 rounded-xl border border-zinc-800/50 relative z-10">{user.address}, {user.district}</p>
                 </div>
               ) : (
-                <div className="bg-orange-50 border-2 border-dashed border-orange-200 p-5 rounded-2xl text-center mt-6">
-                  <p className="text-sm text-orange-800 font-bold mb-3">Add delivery details to checkout.</p>
-                  <button onClick={()=>{onClose(); setView('account');}} className="bg-orange-600 text-white px-6 py-2.5 rounded-xl font-black shadow-lg shadow-orange-600/20 text-sm active:scale-95 transition">Add Address</button>
+                <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl text-center mt-6 shadow-inner">
+                  <p className="text-sm text-zinc-400 font-bold mb-3">Add delivery details to continue.</p>
+                  <button onClick={()=>{onClose(); setView('account');}} className="bg-white text-black px-6 py-2.5 rounded-xl font-black text-sm active:scale-95 transition">Add Address</button>
                 </div>
               )}
             </>
@@ -399,16 +527,16 @@ function CartDrawer({ cart, setCart, onClose, user, config, db, setView }) {
         </div>
 
         {cart.length > 0 && (
-          <div className="p-6 bg-white border-t border-slate-100 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] z-10 rounded-tl-3xl">
-            <div className="space-y-3 mb-5 text-sm font-bold text-slate-500">
-              <div className="flex justify-between"><span>Subtotal</span><span className="text-slate-800">{config.currency || '৳'}{subtotal}</span></div>
-              <div className="flex justify-between"><span>Delivery</span><span className="text-slate-800">{config.currency || '৳'}{delivery}</span></div>
+          <div className="p-6 bg-[#121212] border-t border-zinc-800 z-10 rounded-tl-3xl shadow-[0_-10px_40px_rgba(0,0,0,1)]">
+            <div className="space-y-3 mb-5 text-sm font-bold text-zinc-400">
+              <div className="flex justify-between"><span>Subtotal</span><span className="text-white">{config.currency || '৳'}{subtotal}</span></div>
+              <div className="flex justify-between"><span>Delivery</span><span className="text-white">{config.currency || '৳'}{delivery}</span></div>
             </div>
-            <div className="flex justify-between mb-6 font-black text-2xl text-slate-900 border-t border-dashed border-slate-200 pt-4">
-              <span>Total</span><span className="text-orange-600">{config.currency || '৳'}{total}</span>
+            <div className="flex justify-between mb-6 font-black text-2xl text-white border-t border-dashed border-zinc-800 pt-4">
+              <span>Total Bill</span><span className="text-orange-500">{config.currency || '৳'}{total}</span>
             </div>
-            <button onClick={handleCheckout} disabled={loading} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-slate-900/20 active:scale-95 transition disabled:opacity-70 flex items-center justify-center gap-2">
-              {loading ? 'Processing...' : <><ShoppingCart size={20}/> Confirm Order</>}
+            <button onClick={handleCheckout} disabled={loading} className="w-full bg-white text-black py-4 rounded-2xl font-black text-lg shadow-[0_0_20px_rgba(255,255,255,0.1)] active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-70">
+              {loading ? 'Processing...' : <><CreditCard size={20}/> Confirm Order</>}
             </button>
           </div>
         )}
